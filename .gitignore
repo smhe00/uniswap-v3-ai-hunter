@@ -1,0 +1,20 @@
+# 忽略大文件
+*.csv
+uniswap_data/
+data/
+
+# 忽略临时文件与缓存
+__pycache__/
+*.log
+.DS_Store
+.ipynb_checkpoints/
+
+# 忽略状态文件（保护你的实时运行数据）
+agent_state.json
+
+# 忽略图片（可选，如果你想上传回测图可以删掉这行）
+*.png
+
+# 忽略本地虚拟环境
+venv/
+env/
