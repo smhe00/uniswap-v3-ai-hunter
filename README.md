@@ -48,7 +48,36 @@
 | **相对 Alpha** | 0.0% | **+45.3%** |
 | **蒙特卡罗胜率** | N/A | **91.7%** |
 
-## 5. 最终应用与运维方案
+## 5. 终端输出解读 (CLI Output Interpretation)
+
+运行 `lp_smart_agent.py` 时，你将看到如下格式的输出。以下是各项指标的详细含义及取值范围：
+
+### A. 状态汇总 (State Summary)
+- **Price**: 当前实时 ETH/USDT 价格（来自 Binance Spot）。
+- **Macro RSI**: 4小时级别 RSI 指标。
+    - `> 52`: 进入 **BullRegime**（牛市环境）。
+    - `< 50`: 进入 **BearRegime**（熊市环境）。
+- **Mode**: 系统的当前持仓模式。
+    - `ACTIVE`: 正在池子里提供流动性（LPing）。
+    - `SAFE`: 已撤出流动性，处于避险状态。
+- **Action**: 系统本次运行执行的操作。
+    - `HOLD`: 维持现状，不做任何操作。
+    - `EXIT -> HOLD ETH/USDC`: AI 检测到风险，正在执行撤退。
+    - `RE-ENTER POOL`: 风险解除，正在重新部署资金。
+    - `PERIODIC REBALANCE`: 触发 4 天强制再平衡逻辑。
+- **Range**: 固定为 **±8.13%**，即 25 倍左右的资金效率。
+
+### B. AI 信号细节 (Signals)
+- **GA (Genetic Algorithm)**: 遗传算法环境过滤器。
+    - `True`: 微观指标（RSI, NATR）处于“高胜率”震荡区间。
+    - `False`: 市场微观特征异常，建议观望。
+- **XGB (XGBoost Prob)**: 机器学习预测的 LVR 风险概率 (0.0 ~ 1.0)。
+    - `> 0.57`: **高风险**，触发紧急撤退。
+    - `< 0.57`: **安全**，风险在可控范围内。
+- **Bull/Bear Regime**: 宏观引擎的大势判定。
+    - 决定了当 `XGB > 0.57` 时，你应该持有 ETH 还是 USDC。
+
+## 6. 最终应用与运维方案
 
 ### A. 部署建议
 - **环境**：Python 3.12+，安装依赖 `pip install pandas pandas-ta xgboost ccxt optuna demeter`。
