@@ -1,0 +1,451 @@
+{
+  "report_id": "R0-T001-legacy-claim-audit",
+  "generated_at": "2026-08-23T04:40:28.017483",
+  "remote_head_consumed": "04ac458c4154ceb5780980a1b2c2eb45c0f6b54b",
+  "claim_matrix": [
+    {
+      "claim_id": "R0-T001-C1",
+      "claim": "RANGE_PCT（做市区间）来源",
+      "readme_value": "±8.13%（约 25 倍资本效率）",
+      "code_source": "wide_golden_params.pkl = {range: 0.081264, risk_thresh: 0.568, m_bull: 52, m_bear: 50}，由 wide_range_study.py 的 Optuna 搜索（range∈[0.08,0.12]）得到；lp_smart_agent.py 硬编码 RANGE_PCT=0.0813",
+      "data_source": "本地 UNIV3_DATA minute.csv（598 天）；但脚本 DATA_DIR='uniswap_data/UNIV3_DATA' 在本仓库不存在",
+      "classification": "OPTIMIZER_OUTPUT",
+      "oos_status": "IN_SAMPLE",
+      "credibility": "部分可信（有优化器产物，但搜索=验证同源）",
+      "recommend_rerun": true,
+      "evidence": {
+        "wide_golden_params.pkl": "range=0.08126424856562808",
+        "wide_range_study.py": "objective(): range∈[0.08,0.12]",
+        "lp_smart_agent.py": "RANGE_PCT = 0.0813",
+        "hits": {
+          "lp_smart_agent.py": [
+            19
+          ],
+          "README.md": [
+            26,
+            68
+          ]
+        }
+      }
+    },
+    {
+      "claim_id": "R0-T001-C2",
+      "claim": "XGB_RISK_THRESHOLD（风险报警阈值）来源",
+      "readme_value": "0.57（过滤 90% 以上随机噪音）",
+      "code_source": "wide_golden_params.pkl risk_thresh=0.568 来自 wide_range_study.py Optuna 搜索（risk_thresh∈[0.40,0.70]）；lp_smart_agent.py 硬编码 0.57。注意：demeter_asymmetric_backtest.py 用 0.45，v3_hunter_monte_carlo.py 用 0.55，脚本间阈值不一致",
+      "data_source": "同上",
+      "classification": "OPTIMIZER_OUTPUT",
+      "oos_status": "IN_SAMPLE",
+      "credibility": "部分可信",
+      "recommend_rerun": true,
+      "evidence": {
+        "wide_golden_params.pkl": "risk_thresh=0.5679913691225329",
+        "lp_smart_agent.py": "XGB_RISK_THRESHOLD = 0.57",
+        "demeter_asymmetric_backtest.py": "risk_signal xgb_prob>0.45",
+        "v3_hunter_monte_carlo.py": "is_risk xgb_prob>0.55",
+        "hits": {
+          "lp_smart_agent.py": [
+            21
+          ]
+        }
+      }
+    },
+    {
+      "claim_id": "R0-T001-C3",
+      "claim": "4 天再平衡冷却期来源",
+      "readme_value": "4 天（用于锁定手续费复利）",
+      "code_source": "dual_engine_optimizer.py / wide_range_study.py / demeter_asymmetric_backtest.py 中硬编码 timedelta(days=4)；lp_smart_agent.py 硬编码 REBALANCE_DELAY_DAYS=4",
+      "data_source": "无（代码常量）",
+      "classification": "HARD_CODED",
+      "oos_status": "IN_SAMPLE",
+      "credibility": "可信（硬编码一致）",
+      "recommend_rerun": false,
+      "evidence": {
+        "dual_engine_optimizer.py": "timedelta(days=4)",
+        "wide_range_study.py": "timedelta(days=4)",
+        "demeter_asymmetric_backtest.py": "timedelta(days=4)",
+        "lp_smart_agent.py": "REBALANCE_DELAY_DAYS = 4",
+        "hits": {
+          "dual_engine_optimizer.py": [
+            96
+          ],
+          "wide_range_study.py": [
+            92
+          ],
+          "demeter_asymmetric_backtest.py": [
+            52
+          ],
+          "v3_hunter_monte_carlo.py": [
+            130
+          ]
+        }
+      }
+    },
+    {
+      "claim_id": "R0-T001-C4",
+      "claim": "最终净值 $29,270 来源",
+      "readme_value": "$29,270（AI 猎手最终净值）",
+      "code_source": "仅 README.md 出现；所有旧脚本 / pkl / 结果文件均无 29,270 值。dual_engine_optimizer.py 有 ROI 输出但未保存该净值，且基准 hardcode 20863",
+      "data_source": "无法溯源",
+      "classification": "MANUAL_SUMMARY",
+      "oos_status": "UNKNOWN",
+      "credibility": "不可信 / 无法复现",
+      "recommend_rerun": true,
+      "evidence": {
+        "README.md": "最终净值 $29,270",
+        "absent": "代码中无 29270 常量或输出"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C5",
+      "claim": "总 ROI +40.3% 来源",
+      "readme_value": "+40.3%（总 ROI）",
+      "code_source": "仅 README.md。dual_engine_optimizer.py: roi=(final_nav/20863-1)*100，基准 20863 为硬编码，非代码计算值；无 40.3 常量",
+      "data_source": "无法溯源",
+      "classification": "MANUAL_SUMMARY",
+      "oos_status": "UNKNOWN",
+      "credibility": "不可信 / 无法复现",
+      "recommend_rerun": true,
+      "evidence": {
+        "README.md": "总 ROI +40.3%",
+        "dual_engine_optimizer.py": "roi = (final_nav/20863 - 1)*100  # 硬编码基准",
+        "absent": "代码中无 40.3 常量或输出"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C6",
+      "claim": "相对 Alpha +45.3% 来源",
+      "readme_value": "+45.3%（相对 Alpha）",
+      "code_source": "仅 README.md。代码中无 45.3 常量或输出",
+      "data_source": "无法溯源",
+      "classification": "MANUAL_SUMMARY",
+      "oos_status": "UNKNOWN",
+      "credibility": "不可信 / 无法复现",
+      "recommend_rerun": true,
+      "evidence": {
+        "README.md": "相对 Alpha +45.3%",
+        "absent": "代码中无 45.3"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C7",
+      "claim": "Monte Carlo 胜率 91.7% 来源",
+      "readme_value": "91.7%（蒙特卡罗胜率）",
+      "code_source": "仅 README.md。v3_hunter_monte_carlo.py 只跑 10 次随机（range(10)），SUCCESS=(res_df>0).mean()*100；10 次随机不可能得 91.7%（9/10=90%, 10/10=100%），与代码不匹配",
+      "data_source": "本地 raw.csv（部分）",
+      "classification": "MANUAL_SUMMARY",
+      "oos_status": "OVERLAP",
+      "credibility": "不可信 / 与代码不匹配",
+      "recommend_rerun": true,
+      "evidence": {
+        "v3_hunter_monte_carlo.py": "for i in range(10) / SUCCESS mean",
+        "README.md": "蒙特卡罗胜率 91.7%",
+        "note": "91.7% 无法由 10 次运行产生（非 10 的整数倍）"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C8a",
+      "claim": "+40.44% 来源",
+      "readme_value": "+40.44%（任务引用数值）",
+      "code_source": "当前仓库代码 / README / git 历史均无 40.44",
+      "data_source": "无",
+      "classification": "UNVERIFIED",
+      "oos_status": "UNKNOWN",
+      "credibility": "不可信",
+      "recommend_rerun": true,
+      "evidence": {
+        "absent": "代码与 README 中无 40.44"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C8b",
+      "claim": "+47.65% 来源",
+      "readme_value": "+47.65%（Alpha，注释声称 bear market 验证）",
+      "code_source": "仅 lp_smart_agent.py 第 18 行注释 'Alpha +47.65% verified in bear market'，无任何计算代码支撑",
+      "data_source": "无",
+      "classification": "MANUAL_SUMMARY",
+      "oos_status": "UNKNOWN",
+      "credibility": "不可信 / 无计算支撑",
+      "recommend_rerun": true,
+      "evidence": {
+        "lp_smart_agent.py": "# Optimized Wide-Range Parameters (Alpha +47.65% verified in bear market)"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C8c",
+      "claim": "+32.88% 来源",
+      "readme_value": "+32.88%（Raw Reality Check 输入）",
+      "code_source": "v3_raw_reality_check.py: final_roi_raw = 32.88 * 0.85（硬编码）+ 0.85 'Reality Penalty' 经验系数",
+      "data_source": "raw.csv（但核心结果硬编码）",
+      "classification": "HARD_CODED",
+      "oos_status": "IN_SAMPLE",
+      "credibility": "不可信 / 估算冒充回测",
+      "recommend_rerun": true,
+      "evidence": {
+        "v3_raw_reality_check.py": "final_roi_raw = 32.88 * 0.85  # The 'Reality Penalty'"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C8d",
+      "claim": "+24.15% 来源",
+      "readme_value": "+24.15%（任务引用数值）",
+      "code_source": "当前仓库代码 / README / git 历史均无 24.15",
+      "data_source": "无",
+      "classification": "UNVERIFIED",
+      "oos_status": "UNKNOWN",
+      "credibility": "不可信",
+      "recommend_rerun": true,
+      "evidence": {
+        "absent": "代码与 README 中无 24.15"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C9",
+      "claim": "原子级 / Raw Log 回测是否真正逐笔计算",
+      "readme_value": "README 声称解析几十 GB 链上原始 Swap Log 捕捉插针",
+      "code_source": "v3_raw_reality_check.py 读取 raw.csv 并循环 swap，但：p_entry/p_low/p_high/L 初始为 0 且从未更新；state 永远 POOL（state=='ETH' 分支不可达）；PnL 计算主体为 pass；注释明示 'Local Feature Proxy'、'for the sake of this massive run'；最终 ROI=32.88*0.85 硬编码",
+      "data_source": "本地 raw.csv（598 天，~15 GB）",
+      "classification": "HEURISTIC_ADJUSTMENT",
+      "oos_status": "IN_SAMPLE",
+      "credibility": "不可信 / 非真正逐笔回测",
+      "recommend_rerun": true,
+      "evidence": {
+        "v3_raw_reality_check.py": "final_roi_raw = 32.88 * 0.85"
+      }
+    },
+    {
+      "claim_id": "R0-T001-C10",
+      "claim": "现实约束（15 秒延迟 / 5bps 滑点 / Reality Penalty）是否真实进入计算",
+      "readme_value": "README 声称显式引入 5s 采样 + 10s 上链确认延迟惩罚",
+      "code_source": "5bps：dual_engine_optimizer.py / wide_range_study.py latency_bias=0.0005 作为固定滑点（经验值，非实测）；15 秒延迟：仅 v3_raw_reality_check.py 注释提及，无实现；Reality Penalty：0.85 硬编码乘数",
+      "data_source": "无真实延迟 / 滑点数据",
+      "classification": "HEURISTIC_ADJUSTMENT",
+      "oos_status": "IN_SAMPLE",
+      "credibility": "不可信 / 均为经验假设",
+      "recommend_rerun": true,
+      "evidence": {
+        "dual_engine_optimizer.py": "latency_bias = 0.0005",
+        "wide_range_study.py": "latency_bias = 0.0005",
+        "v3_raw_reality_check.py": "comment: Trade happens 15 seconds LATER"
+      }
+    }
+  ],
+  "leakage_matrix": [
+    {
+      "script": "wide_range_study.py",
+      "search_range": "range∈[0.08,0.12], risk_thresh∈[0.40,0.70], m_bull∈[50,65], m_bear∈[35,50]",
+      "validation_window": "同一 full_minute_df 全量数据 + 2025-08-24 起 Peak Start Stress Test",
+      "overlap": "是（搜索与验证用同一份全量数据）",
+      "future_data": "否（未显式用未来，但无时间分割）",
+      "strict_oos": "IN_SAMPLE"
+    },
+    {
+      "script": "dual_engine_optimizer.py",
+      "search_range": "range∈[0.02,0.05], risk_thresh∈[0.40,0.65]",
+      "validation_window": "search_df=full_minute_df.iloc[-260000:]（最近 ~6 个月），final=full_minute_df 全量",
+      "overlap": "是（最终验证包含搜索用的最后 6 个月）",
+      "future_data": "否",
+      "strict_oos": "OVERLAP"
+    },
+    {
+      "script": "demeter_asymmetric_backtest.py",
+      "search_range": "无搜索（固定 ±4% 区间 + 固定阈值 0.45）",
+      "validation_window": "全量 365 天",
+      "overlap": "不适用（无参数搜索，但无独立验证集）",
+      "future_data": "否",
+      "strict_oos": "IN_SAMPLE"
+    },
+    {
+      "script": "v3_hunter_monte_carlo.py",
+      "search_range": "无参数搜索（固定 0.55 / EMA / RSI 阈值）",
+      "validation_window": "10 次随机 25-35 天窗口",
+      "overlap": "信号基于全量数据预计算，评估窗口内使用全量信号 → 存在信号泄漏风险",
+      "future_data": "潜在（信号用全量数据，包含评估窗口）",
+      "strict_oos": "OVERLAP"
+    },
+    {
+      "script": "v3_raw_reality_check.py",
+      "search_range": "无",
+      "validation_window": "声称全量 raw，实际硬编码结果",
+      "overlap": "不适用（结果非计算产生）",
+      "future_data": "否",
+      "strict_oos": "IN_SAMPLE"
+    }
+  ],
+  "data_mapping": {
+    "old_script_data_dir": "uniswap_data/UNIV3_DATA",
+    "old_script_data_dir_exists_in_repo": false,
+    "old_script_refs": {
+      "demeter_asymmetric_backtest.py": "DATA_DIR = 'uniswap_data/UNIV3_DATA'",
+      "dual_engine_optimizer.py": "DATA_DIR = 'uniswap_data/UNIV3_DATA'",
+      "wide_range_study.py": "DATA_DIR = 'uniswap_data/UNIV3_DATA'",
+      "v3_raw_reality_check.py": "DATA_DIR = 'uniswap_data/UNIV3_DATA'",
+      "v3_hunter_monte_carlo.py": "DATA_DIR = 'uniswap_data/UNIV3_DATA'"
+    },
+    "actual_local_roots": [
+      "D:\\gitee\\uniswap-data\\UNIV3_DATA"
+    ],
+    "gitignore_excludes_uniswap_data": "uniswap_data/",
+    "conclusion": "旧脚本引用的相对路径在本仓库 checkout 内不存在（.gitignore 忽略 uniswap_data/），因此从仓库根直接运行时无法读取数据；本机实际数据位于 D:\\gitee\\uniswap-data\\UNIV3_DATA（Harness 配置根）"
+  },
+  "model_reproducibility": {
+    "model_meta": {
+      "path": "v3_experimental_15m_tag/models_15m.pkl",
+      "exists": true,
+      "load_error": "ImportError: No module named 'xgboost'",
+      "status": "DEGRADED_STATIC",
+      "static_strings": [
+        "xgb",
+        "xgboost.sklearn",
+        "XGBClassifier",
+        "n_estimators",
+        "objective",
+        "binary:logistic",
+        "max_depth",
+        "max_leaves",
+        "max_bin",
+        "grow_policy",
+        "learning_rate",
+        "verbosity",
+        "booster",
+        "tree_method",
+        "gamma",
+        "min_child_weight",
+        "max_delta_step",
+        "subsample",
+        "sampling_method",
+        "colsample_bytree",
+        "colsample_bylevel",
+        "colsample_bynode",
+        "reg_alpha",
+        "reg_lambda",
+        "scale_pos_weight",
+        "base_score",
+        "missing",
+        "num_parallel_tree",
+        "random_state",
+        "n_jobs",
+        "monotone_constraints",
+        "interaction_constraints",
+        "importance_type",
+        "device",
+        "validate_parameters",
+        "enable_categorical",
+        "feature_types",
+        "feature_weights",
+        "max_cat_to_onehot",
+        "max_cat_threshold",
+        "multi_strategy",
+        "eval_metric",
+        "early_stopping_rounds",
+        "callbacks",
+        "n_classes_",
+        "_Booster",
+        "xgboost.core",
+        "Booster",
+        "handle",
+        "builtins",
+        "bytearray",
+        "ga",
+        "deap.creator",
+        "meta_create",
+        "Individual",
+        "list",
+        "fitness",
+        "FitnessMax",
+        "deap.base",
+        "Fitness",
+        "weights",
+        "wvalues",
+        "numpy._core.multiarray",
+        "scalar",
+        "numpy",
+        "dtype",
+        "f8",
+        "<",
+        "features",
+        "RSI_14",
+        "ADX_14",
+        "ADXR_14_2",
+        "DMP_14",
+        "DMN_14",
+        "NATR_14",
+        "bb_width",
+        "RSI_14_lag1",
+        "RSI_14_lag2",
+        "RSI_14_lag4",
+        "NATR_14_lag1",
+        "NATR_14_lag2",
+        "NATR_14_lag4",
+        "ADX_14_lag1",
+        "ADX_14_lag2",
+        "ADX_14_lag4",
+        "bb_width_lag1",
+        "bb_width_lag2",
+        "bb_width_lag4"
+      ],
+      "static_float_count": 6,
+      "static_floats": [
+        0.015627569171597175,
+        NaN,
+        1.0,
+        46.78085945837288,
+        80.70883111005968,
+        1.5875745741755496
+      ],
+      "model_class": "XGBClassifier",
+      "model_module": "xgboost.sklearn",
+      "top_level_keys": [
+        "xgb",
+        "ga",
+        "features"
+      ],
+      "features": [
+        "RSI_14",
+        "ADX_14",
+        "ADXR_14_2",
+        "DMP_14",
+        "DMN_14",
+        "NATR_14",
+        "bb_width",
+        "RSI_14_lag1",
+        "RSI_14_lag2",
+        "RSI_14_lag4",
+        "NATR_14_lag1",
+        "NATR_14_lag2",
+        "NATR_14_lag4",
+        "ADX_14_lag1",
+        "ADX_14_lag2",
+        "ADX_14_lag4",
+        "bb_width_lag1",
+        "bb_width_lag2",
+        "bb_width_lag4"
+      ],
+      "feature_count": 19,
+      "ga_values": [
+        46.78085945837288,
+        80.70883111005968,
+        1.5875745741755496
+      ],
+      "ga_fitness_like": [
+        1.0
+      ]
+    },
+    "training_script_in_repo": false,
+    "reproducible_from_repo": false,
+    "missing_to_reproduce": [
+      "模型训练脚本（仓库中不存在能生成 models_15m.pkl 的脚本）",
+      "标签定义（LVR 风险标签如何从数据生成）",
+      "训练窗口 / 数据版本",
+      "随机种子 / 早停 / 验证划分"
+    ],
+    "conclusion": "models_15m.pkl 无法从当前仓库代码 + 本地数据完整重建；缺少训练脚本与标签定义。"
+  },
+  "conclusions": {
+    "readme_403_trustworthy": false,
+    "mc_917_reproducible": false,
+    "raw_atomic_real": false,
+    "model_retrainable": false,
+    "next_rerun_recommendation": "最值得重跑：wide_range_study.py 的 wide-range（±8.13%）策略在严格 OOS 分割下做全量逐笔回测（该参数有优化器产物与脚本支撑，是唯一有完整代码路径的核心结论）；其次为 v3_hunter_monte_carlo.py 增加独立样本外信号重建。"
+  }
+}
