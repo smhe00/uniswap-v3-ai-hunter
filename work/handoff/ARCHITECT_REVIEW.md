@@ -1,96 +1,101 @@
-# Architect Review — R0-T001 Iteration 1
+# Architect Review — R0-T001 Iteration 2
 
 ## Decision
 
 `CHANGES_REQUIRED`
 
-R0-T001 的主体审计方向正确，关键旧结论（+40.3%、91.7%、Raw/原子级结果、模型不可重训）基本识别到位，但本轮不能 PASS。原因包括 1 项范围违规、1 项测试覆盖缺口和 1 项 OOS（Out-of-Sample，样本外）判定过度。
+Iteration 2 已正确修复上一轮 F1 / F2，并基本修正 F3，但仍有 1 个一致性缺口，因此本轮不能 PASS。
 
 ## Reviewed Snapshot
 
-- remote_head: `5ddaa3fba24f2f8bc4ec3f5fab0588a0a7ea2ab7`
+- remote_head: `f60d663de82dfc0a88adc0f6514d31fe233a6bc2`
 - task_id: `R0-T001`
-- iteration reviewed: `1`
-- consumed harness handoff: `R0-T001-HARNESS-20260823-001`
+- iteration reviewed: `2`
+- consumed harness handoff: `R0-T001-HARNESS-20260823-002`
 
-## Findings
+## Accepted Fixes
 
-### F1 — Allowed Files 违规（必须修）
+### F1 — `.gitignore` 越界修改
 
-`04ac458c... -> 5ddaa3fb...` 的实际 diff 除任务允许文件外，还修改了：
-
-- `.gitignore`
-
-新增：
+已正确撤销上一轮新增的：
 
 ```text
 .pytest_cache/
 pytest-cache-files-*/
 ```
 
-原任务 §9 明确限定 Allowed Files，不包含 `.gitignore`；§16 也禁止修改 Allowed Files 之外文件。因此必须撤销这两行，使 `.gitignore` 恢复到任务基线 `04ac458c4154ceb5780980a1b2c2eb45c0f6b54b` 的内容。
+本轮 diff 仅删除这两行，符合 Architect 的窄范围授权。
 
-本轮 Iteration 2 **仅为撤销该越界改动**，特别授权 Harness 修改 `.gitignore`，且只允许删除本轮新增的上述两行，不得做其他整理。
+### F2 — 模型缺失降级测试
 
-### F2 — “模型缺失时降级”测试未真正覆盖（必须修）
+已正确增加 `model_path` 注入，并真实构造不存在的模型路径；测试明确断言：
 
-`tests/test_r0_t001_legacy_audit.py::test_missing_model_degrades_to_unverified` 当前只是调用真实仓库模型并断言返回值包含 `exists`：
-
-```python
-meta = audit._analyze_model_metadata()
-assert "exists" in meta
+```text
+exists is False
+status == "UNVERIFIED"
 ```
 
-这没有构造“模型文件缺失”的场景，也没有验证状态为 `UNVERIFIED`，因此没有满足 CURRENT_TASK §12.6。
+未移动或重命名真实 `models_15m.pkl`。该项修复满足要求。
 
-修复要求：
+### F3 — Monte Carlo 脚本级 OOS 判定
 
-1. 让 `_analyze_model_metadata()` 支持可测试的模型路径注入，或以等价、无副作用方式临时指向不存在路径；
-2. 新测试必须真实构造模型缺失；
-3. 明确断言：`exists is False` 且 `status == "UNVERIFIED"`；
-4. 不得重命名/移动真实 `models_15m.pkl` 来制造缺失场景。
+`v3_hunter_monte_carlo.py` 的 leakage matrix 已从 `OVERLAP` 修正为 `UNKNOWN`，并明确说明：
 
-### F3 — `v3_hunter_monte_carlo.py` 的 OOS 判定过度（必须修）
+- 技术指标管线未发现明确 look-ahead；
+- `merge_asof(direction='backward')` 本身没有证明未来数据使用；
+- 由于 `models_15m.pkl` 的训练窗口 / 标签 / 切分未知，无法证明随机测试窗口属于严格样本外。
 
-本轮报告将该脚本标为 `OVERLAP`，理由是“信号全量预计算含评估窗口”。这个理由本身不足以证明未来数据泄漏：
+该判断正确。
 
-- 技术指标由历史价格滚动/重采样计算；
-- 原脚本用 `pd.merge_asof(..., direction='backward')` 将最近的既有信号并入 Swap；
-- “在整段历史上预先算出因果指标”不等于“使用未来值”。
+## Remaining Finding
 
-真正无法确认的是 `models_15m.pkl` 的训练来源：训练脚本、标签、训练窗口和切分均缺失。因此无法证明随机测试窗口是否属于模型严格样本外，也无法证明一定重叠。
+### F4 — Claim Matrix 与 Leakage Matrix 的 OOS 状态仍不一致（必须修）
 
-修复要求：
+生成产物 `results/r0_t001/legacy_claim_audit.json` 中：
 
-- `v3_hunter_monte_carlo.py` 的总体 OOS 状态从 `OVERLAP` 改为 `UNKNOWN`；
-- `future_data` 改为 `UNKNOWN` 或等价明确表述；
-- 说明：技术指标管线本身未发现明确 look-ahead，但模型训练窗口未知，因此无法判定严格 OOS；
-- `91.7%` 仍维持“不可能由当前 10 次运行直接产生、当前代码不可复现”的结论，这一结论不受上述修改影响。
+```text
+claim_id = R0-T001-C7
+claim = Monte Carlo 胜率 91.7% 来源
+oos_status = OVERLAP
+```
 
-## Accepted Findings（本轮可保留）
+但同一产物的 leakage matrix 已把 `v3_hunter_monte_carlo.py` 标为：
 
-以下核心审计判断有充分代码证据，可继续保留：
+```text
+strict_oos = UNKNOWN
+future_data = UNKNOWN
+```
 
-1. README 的 `$29,270 / +40.3% / +45.3%` 当前缺少完整可复现证据链；
-2. `91.7%` 与当前 `range(10)` 的随机窗口代码不匹配；
-3. `v3_raw_reality_check.py` 最终结果使用 `32.88 * 0.85`，不能称为真实逐笔 Raw Log（原始日志）收益结果；
-4. `wide_range_study.py` 的参数搜索与所谓验证使用同源数据，属于 `IN_SAMPLE`（样本内）；
-5. `dual_engine_optimizer.py` 最终验证包含参数搜索窗口，属于 `OVERLAP`（重叠）；
-6. 当前仓库缺少 `models_15m.pkl` 的完整训练流程，因此模型无法从仓库独立重训。
+Harness Report 的 Claim Matrix 也仍显示 `91.7% | ... | OVERLAP`，与本轮 F3 的修正结论冲突。
 
-## Iteration 2 Narrow Fix Scope
+这不是新的研究判断问题，而是同一结论在不同输出层之间没有同步。
 
-允许修改：
+## Iteration 3 Narrow Fix Scope
 
-- `.gitignore` —— **仅撤销 Iteration 1 新增的两行**；
-- `research/r0_t001_legacy_audit.py`；
-- `tests/test_r0_t001_legacy_audit.py`；
-- `results/r0_t001/legacy_claim_audit.json`；
-- `results/r0_t001/legacy_claim_audit.md`；
-- `work/handoff/HARNESS_REPORT.md`；
-- `work/control/WORKFLOW_STATE.yaml`。
+只允许修改：
 
-禁止修改其他文件，禁止顺手格式化旧代码。
+- `research/r0_t001_legacy_audit.py`
+- `tests/test_r0_t001_legacy_audit.py`
+- `results/r0_t001/legacy_claim_audit.json`
+- `results/r0_t001/legacy_claim_audit.md`
+- `work/handoff/HARNESS_REPORT.md`
+- `work/control/WORKFLOW_STATE.yaml`
+
+禁止修改 `.gitignore` 和其他任何文件。
+
+## Required Fix
+
+1. 将 Claim `R0-T001-C7` 的 `oos_status` 改为 `UNKNOWN`；
+2. 生成的 Markdown Claim Matrix 和 Harness Report 中相应行也必须为 `UNKNOWN`；
+3. 保留“91.7% 无法由当前 `range(10)` 代码直接产生”的可信度判断，不因 OOS 状态修正而改变；
+4. 新增或加强测试，至少明确断言：
+
+```text
+claims["R0-T001-C7"]["oos_status"] == UNKNOWN
+leaks["v3_hunter_monte_carlo.py"]["strict_oos"] == UNKNOWN
+```
+
+5. 重新生成 JSON / Markdown 产物并运行完整 R0-T001 测试。
 
 ## Required Validation
 
@@ -101,13 +106,23 @@ python research/r0_t001_legacy_audit.py
 python -m pytest -q -p no:cacheprovider tests/test_r0_t001_legacy_audit.py
 ```
 
-并在 Harness Report 中额外记录：
+Harness Report 必须记录：
 
-1. `.gitignore` 已恢复至基线，不再包含本任务越界新增项；
-2. 缺失模型测试的真实断言结果；
-3. Monte Carlo OOS 状态已改为 `UNKNOWN` 的理由；
-4. 更新后的测试总数和 PASS 数。
+- Claim C7 与 Leakage Matrix 的 OOS 状态均为 `UNKNOWN`；
+- 测试总数、PASS 数；
+- 实际运行命令。
+
+## Accepted Core Conclusions
+
+以下结论保持不变：
+
+1. README 的 `$29,270 / +40.3% / +45.3%` 当前缺少完整可复现证据链；
+2. `91.7%` 不能由当前 10 次随机测试代码直接产生；
+3. `v3_raw_reality_check.py` 的最终收益使用 `32.88 * 0.85` 经验修正，不能称为真实逐笔 Raw Log（原始日志）回测收益；
+4. `wide_range_study.py` 属于 `IN_SAMPLE`（样本内）；
+5. `dual_engine_optimizer.py` 属于 `OVERLAP`（训练/搜索与验证区间重叠）；
+6. `models_15m.pkl` 当前无法从仓库独立重训。
 
 ## Next State
 
-保持同一 `task_id = R0-T001`，进入 iteration 2。完成窄范围修正后发布新的 `REVIEW_READY`；不得自行开始 R0-T002。
+保持 `task_id = R0-T001`，进入 iteration 3。完成上述单一一致性修正后发布新的 `REVIEW_READY`；不得自行开始下一任务。
