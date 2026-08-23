@@ -2,14 +2,15 @@ protocol: "UniswapV3_AI_Hunter_GitHub双Agent简化通信协议_Rev1.md"
 repository: "smhe00/uniswap-v3-ai-hunter"
 branch: "main"
 
-handoff_seq: 4
-handoff_id: "R0-T001-HARNESS-20260823-002"
+handoff_seq: 5
+handoff_id: "R0-T001-ARCH-20260823-003"
 task_id: "R0-T001"
-iteration: 2
+iteration: 3
 
-state: "REVIEW_READY"
-owner: "architect"
-authorized_next: []
+state: "CHANGES_REQUIRED"
+owner: "harness"
+authorized_next:
+  - "R0-T001"
 
-git_base_commit: "84c751cd5c116ece6d9731d3332432e5b6b807ff"
-last_update: "2026-08-23T05:20:00+08:00"
+git_base_commit: "f60d663de82dfc0a88adc0f6514d31fe233a6bc2"
+last_update: "2026-08-23T09:02:00+08:00"
