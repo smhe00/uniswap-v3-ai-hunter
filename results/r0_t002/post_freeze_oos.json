@@ -1,41 +1,59 @@
 {
   "task_id": "R0-T002",
-  "iteration": 1,
+  "iteration": 2,
   "status": "COMPLETE",
   "oos_window": {
     "start": "2026-03-14T00:00:00+00:00",
     "end": "2026-08-21T23:59:59+00:00"
   },
   "initial_capital": 10000.0,
-  "pool_rows": 231725,
-  "signal_rows": 15456,
+  "signal_source_primary": "Binance spot ETHUSDT 1m (production-like, pandas_ta)",
+  "signal_source_control": "Pool-derived minute price (control only)",
+  "data_evidence": {
+    "binance_files": "ETHUSDT-1m zips 2026-01-28..2026-08-21",
+    "binance_rows": 296640,
+    "binance_gaps": "checked at load; all daily files present",
+    "pool_rows_oos": 231725,
+    "pool_warmup_rows": 64490,
+    "binance_signal_rows_oos": 15457,
+    "pool_signal_rows_oos": 15457
+  },
   "metrics": {
-    "A_frozen_legacy_gross": {
+    "A_frozen_legacy_gross_binance": {
       "start_nav": 10000.0,
-      "end_nav": 12137.72,
-      "total_return": 0.213772,
-      "annualized_return": 0.551817,
-      "max_drawdown": -0.240947,
-      "sharpe": 1.2561,
-      "sortino": 2.0583
+      "end_nav": 12391.39,
+      "total_return": 0.239139,
+      "annualized_return": 0.626356,
+      "max_drawdown": -0.252088,
+      "sharpe": 1.3136,
+      "sortino": 2.4299
     },
-    "A_frozen_legacy_legacy_cost": {
+    "A_frozen_legacy_legacy_cost_binance": {
       "start_nav": 10000.0,
-      "end_nav": 12125.68,
-      "total_return": 0.212568,
-      "annualized_return": 0.548327,
-      "max_drawdown": -0.24222,
-      "sharpe": 1.2489,
-      "sortino": 2.0574
+      "end_nav": 12350.77,
+      "total_return": 0.235077,
+      "annualized_return": 0.614288,
+      "max_drawdown": -0.253896,
+      "sharpe": 1.2951,
+      "sortino": 2.4026
     },
-    "B_always_lp_gross": {
+    "B_always_lp_gross_binance": {
       "start_nav": 10000.0,
-      "end_nav": 9995.75,
-      "total_return": -0.000425,
-      "annualized_return": -0.000963,
-      "max_drawdown": -0.001348,
-      "sharpe": -0.8297,
-      "sortino": -0.592
+      "end_nav": 9417.41,
+      "total_return": -0.058259,
+      "annualized_return": -0.127288,
+      "max_drawdown": -0.260794,
+      "sharpe": -0.3489,
+      "sortino": -0.3395
+    },
+    "A_frozen_legacy_gross_pool_control": {
+      "start_nav": 10000.0,
+      "end_nav": 12263.48,
+      "total_return": 0.226348,
+      "annualized_return": 0.588526,
+      "max_drawdown": -0.252168,
+      "sharpe": 1.2609,
+      "sortino": 2.3459
     },
     "C_always_eth": {
       "start_nav": 10000.0,
@@ -66,38 +84,61 @@
     }
   },
   "excess_return": {
-    "vs_always_lp": 0.214288,
-    "vs_always_eth": 0.008982,
-    "vs_always_usdc": 0.213772,
-    "vs_buy_hold_5050": 0.101943
+    "frozen_vs_always_lp_binance": 0.315796,
+    "frozen_vs_always_eth_binance": 0.030069,
+    "frozen_vs_always_usdc_binance": 0.239139,
+    "frozen_vs_buy_hold_5050_binance": 0.124973
   },
   "event_stats": {
-    "frozen_legacy": {
-      "ACTIVE_TO_SAFE": 38,
-      "SAFE_TO_ACTIVE": 37,
+    "frozen_legacy_binance": {
+      "ACTIVE_TO_SAFE": 39,
+      "SAFE_TO_ACTIVE": 39,
       "SAFE_ETH": 18,
-      "SAFE_USDC": 19,
-      "SAFE_KEEP": 1,
-      "COOLDOWN_SKIP": 8795
+      "SAFE_USDC": 17,
+      "SAFE_KEEP": 4,
+      "COOLDOWN_SKIP": 9102,
+      "PERIODIC_REBALANCE": 0
     },
-    "frozen_decisions": 15448,
-    "lp_stats_frozen": {
-      "lp_total": 607,
-      "lp_inrange": 607,
+    "frozen_decisions_binance": 15448,
+    "always_lp_events_binance": {
+      "PERIODIC_REBALANCE": 34
+    },
+    "lp_stats_frozen_binance": {
+      "lp_total": 373,
+      "lp_inrange": 373,
       "oor_total": 0,
-      "lp_time_ratio": 0.0393,
+      "lp_time_ratio": 0.0241,
       "lp_inrange_ratio": 1.0
     },
-    "lp_stats_always": {
+    "lp_stats_always_binance": {
       "lp_total": 15447,
-      "lp_inrange": 14800,
-      "oor_total": 647,
-      "lp_time_ratio": 0.9999,
-      "lp_inrange_ratio": 0.9581
+      "lp_inrange": 14660,
+      "oor_total": 787,
+      "lp_time_ratio": 0.9999
     },
-    "acc_fees_gross": 0.0,
-    "acc_fees_legacy_cost": 0.0,
-    "acc_fees_always_lp": 0.03
+    "acc_fees_frozen_gross_binance": 88.28,
+    "acc_fees_frozen_cost_binance": 87.77,
+    "acc_fees_always_lp_binance": 2976.94,
+    "deployed_value_frozen_binance": 12386.28,
+    "idle_value_frozen_binance": 4.04,
+    "deployed_value_always_lp_binance": 9353.14,
+    "idle_value_always_lp_binance": 13.76,
+    "frozen_pool_control_events": {
+      "ACTIVE_TO_SAFE": 39,
+      "SAFE_TO_ACTIVE": 38,
+      "SAFE_ETH": 19,
+      "SAFE_USDC": 17,
+      "SAFE_KEEP": 3,
+      "COOLDOWN_SKIP": 9011,
+      "PERIODIC_REBALANCE": 0
+    }
   },
-  "note": "使用 demeter Uniswap V3 引擎；手续费基于真实池成交（inAmount*share*fee_rate）"
+  "fixes": {
+    "F1_binance_primary": "Binance 1m -> 15m/4h signals (primary); pool-derived as control; separate columns",
+    "F2_causality": "resample label='right' closed='right'; bar timestamp = close time",
+    "F3_pandas_ta": "pandas_ta indicators (RSI/ADX+ADXR_14_2/NATR% /bbands); NATR in percent scale",
+    "F4_capital_deploy": "V3 range value-ratio capital deployment; idle tracked",
+    "F5_periodic_rebalance": "4-day periodic rebalance in ACTIVE state (production semantics)",
+    "F6_cumulative_fee": "cumulative fee = positive diffs of uncollected fee series"
+  }
 }
