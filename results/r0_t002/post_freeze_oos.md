@@ -1,4 +1,4 @@
-# R0-T002 Post-Freeze Strict OOS Validation - Iteration 3
+# R0-T002 Post-Freeze Strict OOS Validation - Iteration 4
 
 - OOS 窗口：2026-03-14T00:00:00+00:00 -> 2026-08-21T23:59:59+00:00
 - 初始资本：10000.0 USDC（全部策略一致）
@@ -64,17 +64,35 @@
 - on 版对账：position=11625.51 + idle=3.7932 + uncollected_fee=4.8015 = 11634.1047（vs final_nav 11634.104670114772）
 - on 版动作统计：add=38 remove=37 collect=37 swap=75
 
-## 6. Iteration 3 修复（F7-F13）
+## 6. Iteration 4 修复（S1/P0-1..3/P1-1..2 + F7-F13）
 
+- S1_anti_churn_cooldown: 保留 4-day anti-churn exit/re-entry cooldown（4 天退出/再进入防震荡冷却）：ACTIVE->SAFE 记录退出时点，SAFE->ACTIVE 需 >=4 天，否则 COOLDOWN_SKIP。不得删除/缩短/优化（用户明确策略意图）
+- P0_1_model_input_no_failopen: 正式 OOS 前 validate_model_inputs 校验 features 存在+顺序+非有限+predict 试跑；策略内 strict_model_input=True 时缺失/非有限/predict 异常一律 raise RuntimeError；输出 model_input_audit（required_feature_count/missing/non_finite/predict_errors/first_valid_oos_decision）
+- P0_2_time_causality_keep: Iteration 3 时间因果与 OHLC 修复保留并回归通过（open=first/high=max/low=min/close=last、available-time 语义、00:15/04:00 精确边界、NATR 百分比尺度）；native_bar_parity=NOT_AVAILABLE（无原生文件不阻塞）
+- P0_3_lp_economics_reconcilable: final NAV=position+idle+uncollected_fee（reconciliation error<0.02）；deploy idle_ratio<1%；fee-on/fee-off 保持相同 add/remove/rebalance 事件路径
+- P1_1_fee_ledger_naming: fee_accrued_eth/usdc（token 数量累计）+ fee_uncollected_final_eth/usdc；fee_collected 仅当可低风险拆分时输出，否则标 deprecated 不用于结论；核心判断用 fee_on_nav-fee_off_nav 路径贡献
+- P1_2_legacy_cost_honest_naming: latency_bias=5bps / exit_deduction=0.0002 明确称为 'Legacy heuristic cost assumption（旧启发式成本假设）'，非实际 Gas/滑点/历史成交成本
 - F7_ohlc_aggregation: 1m 完整 OHLC -> 15m/4h：open=first, high=max, low=min, close=last；load_binance_ethusdt_1m 读 [open,high,low,close]，pool 用 tick 派生 OHLC
 - F8_bar_available_time: 1m kline ts=open_time；方案 A：映射为 close availability time(+1min) 再聚合，bar 时间戳=完全可用时刻，无 1 分钟未来泄漏
 - F9_deploy_invariant: position_value=base_in_pos*price+quote_in_pos；idle_wallet=wallet_ETH*price+wallet_USDC；total_nav_components=position+idle+uncollected_fee；idle_ratio 在建仓时点记录并断言 <1%
-- F10_token_fee: 累计 fee 按 token 数量：action log collect 的 base/quote + 最终 uncollected；不再用价格重估 diff() 口径
+- F10_token_fee: 累计 fee 按 token 数量（uncollected 序列 positive diff），ETH/USDC 分计，不做价格重估
 - F11_periodic_rebalance_test: deterministic 单测：ACTIVE+持仓 t0..t0+3d 不重建，t0+4d 恰好一次重建，last_rebalance 更新（Frozen 与 Always LP 均覆盖）
 - F12_lp_reconciliation: NAV=position+idle+uncollected_fee 幂等对账表 + fee-disabled counterfactual (fee_rate=0) 隔离手续费贡献
-- F13_parity_two_layers: Layer1 OHLC parity（无原生文件→报告聚合公式）；Layer2 feature parity （单一 pandas_ta 聚合路径，列清单见 parity）
+- F13_parity_two_layers: Layer1 OHLC parity（无原生文件→NOT_AVAILABLE）；Layer2 feature parity （单一 pandas_ta 聚合路径，列清单见 parity）
 
-## 7. Architect 12 个强制答案
+## 6.1 P0-1 模型输入审计（禁止静默 fail-open）
+
+- required_feature_count: 19
+- missing_feature_count: 0
+- missing_feature_names: []
+- non_finite_decision_rows: 0
+- predict_errors: 0
+- first_valid_oos_decision: 2026-03-14T00:00:00+00:00
+- runtime_decision_rows: 15448
+- runtime_non_finite_decision_rows: 0
+- runtime_predict_errors: 0
+
+## 7. Architect 强制答案
 
 - **Q1_input_native_or_aggregated**: aggregated-from-1m-OHLC（本地无原生 15m/4h；F7 优先级 2）
 - **Q2_parity_results**: Layer1: 无原生文件可对，仅聚合公式单测；Layer2: 特征列全部来自 compute_signals_from_ohlc 单一 pandas_ta 路径（见 tests）
@@ -89,6 +107,13 @@
 - **Q11_fee_disabled_difference**: Always LP fee 贡献=2468.7 USDC; Frozen fee 贡献=130.21 USDC
 - **Q12_which_fix_matters_most**: F7+F8（OHLC 聚合与可用时点）改变信号 high/low 与边界，F10（token 级 fee）改变 fee 口径；最终以回测数字对比为准
 
+## 7.1 Iteration 4 四个策略问题
+
+- **Q1_frozen_oos_return_with_cooldown**: 保留 4-day anti-churn cooldown 后 Frozen Legacy OOS 收益 = 16.34% (Gross) / 15.89% (Legacy-Cost)
+- **Q2_beats_always_lp**: Frozen(16.34%) vs Always LP(-5.83%) -> excess=23.54%
+- **Q3_beats_always_eth**: Frozen(16.34%) vs Always ETH(20.30%) -> excess=-3.29%
+- **Q4_worth_as_benchmark**: Frozen 相对 Always LP 显著占优(+23.54%)、相对 Always ETH 落后(-3.29%)；其超额主要来自 SAFE 避险择时（COOLDOWN_SKIP 8842 次说明大部分时间在防震荡等待）。作为后续新 LP/ETH/USDC routing 研究的 benchmark 有价值；不继续深挖旧模型
+
 ## 8. 数据证据与 parity（F13）
 
 - binance_files: ETHUSDT-1m zips 2026-01-28..2026-08-21
@@ -102,6 +127,7 @@
 - aggregation_rule: 1m OHLC -> 15m/4h: open=first, high=max, low=min, close=last; 1m open_time -> close availability time (+1min)
 - native_15m_4h_available: False
 - native_15m_4h_note: 本地 BINANCE_KDATA 无原生 15m/4h 文件（仅 1m/1s），按 F7 优先级 2 用 1m OHLC 聚合
+- native_bar_parity: NOT_AVAILABLE
 
 ### Layer 1 OHLC parity
 

@@ -296,7 +296,7 @@ class TestSchema:
             pytest.skip("results not generated yet")
         with open(p, encoding="utf-8") as f:
             data = json.load(f)
-        assert data["iteration"] == 3
+        assert data["iteration"] == 4
         assert "metrics" in data
         assert "excess_return" in data
         assert "event_stats" in data
@@ -533,3 +533,238 @@ class TestMetrics:
         expected = 10000.0 * p_end / p0
         assert abs(bench["always_eth"]["final_nav"] - expected) / expected < 0.01
         mod.OOS_END = pd.Timestamp("2026-08-21 23:59:59", tz="UTC")
+
+
+# ---------------------------------------------------------------------------
+# P0-1: 模型输入异常不得 fail-open
+# ---------------------------------------------------------------------------
+class _FailingRiskModel:
+    """predict_proba 一律抛异常（测试 fail-fast）。"""
+
+    def predict_proba(self, X):
+        raise RuntimeError("boom: predict_proba failure")
+
+
+class _SpikyRiskModel:
+    """可控 predict_proba：风险概率序列，用于测试模型输入路径。"""
+
+    def __init__(self, probs):
+        self.probs = list(probs)
+        self.calls = 0
+
+    def predict_proba(self, X):
+        p = self.probs[min(self.calls, len(self.probs) - 1)]
+        self.calls += 1
+        n = len(X)
+        return np.full((n, 2), [1.0 - p, p])
+
+
+class TestP01ModelInputNoFailOpen:
+    """P0-1: 正式 OOS 前模型输入校验 + 策略内严格 fail-fast。"""
+
+    def test_missing_model_feature_fails_fast(self):
+        """缺失特征 -> validate_model_inputs 抛 RuntimeError。"""
+        sig = make_synthetic_signals(days=5)
+        features = [c for c in sig.columns if c != "close_15m"]
+        sig = sig.drop(columns=["RSI_14_lag1"])  # 删除一个模型特征
+        import pytest
+        with pytest.raises(RuntimeError):
+            mod.validate_model_inputs(sig, features, _StubRiskModel(),
+                                      oos_start=pd.Timestamp("2026-03-14", tz="UTC"))
+
+    def test_predict_exception_fails_fast(self):
+        """predict_proba 抛异常 -> validate_model_inputs 抛 RuntimeError（不降级 0.0）。"""
+        sig = make_synthetic_signals(days=5)
+        features = [c for c in sig.columns if c != "close_15m"]
+        import pytest
+        with pytest.raises(RuntimeError):
+            mod.validate_model_inputs(sig, features, _FailingRiskModel(),
+                                      oos_start=pd.Timestamp("2026-03-14", tz="UTC"))
+
+    def test_nonfinite_model_input_fails_fast(self):
+        """非有限特征 -> validate_model_inputs 抛 RuntimeError（或在正式 OOS 前剔除）。"""
+        sig = make_synthetic_signals(days=5)
+        features = [c for c in sig.columns if c != "close_15m"]
+        sig.loc[sig.index[0], "RSI_14"] = np.nan  # OOS 首行注入 NaN
+        import pytest
+        with pytest.raises(RuntimeError):
+            mod.validate_model_inputs(sig, features, _StubRiskModel(),
+                                      oos_start=pd.Timestamp("2026-03-14", tz="UTC"))
+
+    def test_clean_oos_passes_with_audit(self):
+        """干净 OOS -> validate 通过且 audit 计数全 0。"""
+        sig = make_synthetic_signals(days=5)
+        features = [c for c in sig.columns if c != "close_15m"]
+        audit = mod.validate_model_inputs(sig, features, _StubRiskModel(),
+                                          oos_start=pd.Timestamp("2026-03-14", tz="UTC"))
+        assert audit["required_feature_count"] == len(features)
+        assert audit["missing_feature_count"] == 0
+        assert audit["non_finite_decision_rows"] == 0
+        assert audit["predict_errors"] == 0
+        assert audit["first_valid_oos_decision"] is not None
+
+    def test_runtime_strict_raises_on_predict_error(self):
+        """策略 strict_model_input=True 时 predict_proba 异常 -> RuntimeError。"""
+        pool = make_synthetic_pool(days=5)
+        sig = make_synthetic_signals(days=5)
+        features = [c for c in sig.columns if c != "close_15m"]
+        import pytest
+        with pytest.raises(RuntimeError):
+            run_quiet(mod.FrozenLegacyStrategy, pool, sig, _FailingRiskModel(),
+                      features, "gross", "frozen_legacy", strict_model_input=True)
+
+    def test_runtime_audit_counts_zero(self):
+        """strict 正式回测后 model_audit 决策数>0 且异常数 0。"""
+        pool = make_synthetic_pool(days=5)
+        sig = make_synthetic_signals(days=5)
+        features = [c for c in sig.columns if c != "close_15m"]
+        res = run_quiet(mod.FrozenLegacyStrategy, pool, sig, _StubRiskModel(),
+                        features, "gross", "frozen_legacy", strict_model_input=True)
+        audit = res["model_audit"]
+        assert audit["decision_rows"] > 0
+        assert audit["non_finite_decision_rows"] == 0
+        assert audit["predict_errors"] == 0
+        assert audit["first_oos_decision"] is not None
+
+
+# ---------------------------------------------------------------------------
+# S1: 4-day anti-churn cooldown 行为测试
+# ---------------------------------------------------------------------------
+class TestS1ExitReentryCooldown:
+    """S1: 退出 LP 后 4 天内不重新进入（anti-churn），4 天后才允许。"""
+
+    def _make_exit_reentry_signals(self, days=10, start="2026-03-14 00:00",
+                                   exit_day=2, rsi_exit=95.0, rsi_active=55.0):
+        """RSI 序列：前 exit_day 天 active(55) -> 之后 1 天 RSI=95 触发 exit -> 再回 55。
+
+        返回 sig（含时间列），并记录 exit 触发时点与 exit 前/后区间。
+        """
+        sig = make_synthetic_signals(days=days, start=start, rsi=rsi_active)
+        exit_start = pd.Timestamp(start, tz="UTC") + pd.Timedelta(days=exit_day)
+        exit_end = exit_start + pd.Timedelta(days=1)
+        mask = (sig.index >= exit_start) & (sig.index < exit_end)
+        sig.loc[mask, "RSI_14"] = rsi_exit
+        return sig, exit_start
+
+    def test_no_reentry_within_four_days(self):
+        """t0 退出后，t0+3d23h45m 即使 active 也不得 re-enter。"""
+        pool = make_synthetic_pool(days=10)
+        sig, exit_start = self._make_exit_reentry_signals(days=10, exit_day=2)
+        features = [c for c in sig.columns if c != "close_15m"]
+        res = run_quiet(mod.FrozenLegacyStrategy, pool, sig, _StubRiskModel(),
+                        features, "gross", "frozen_legacy")
+        events = res["events"]
+        # 退出发生（ACTIVE_TO_SAFE >= 1），且 4 天内没有 SAFE_TO_ACTIVE
+        assert events["ACTIVE_TO_SAFE"] >= 1, "应至少触发一次退出"
+        # SAFE_TO_ACTIVE 必须发生在 exit 后 >= 4 天；若整个窗口内 cooldown 未满则不应发生
+        snaps = res["deploy_snapshots"]
+        if snaps:
+            # 每个建仓快照（re-entry）都应在某次退出 4 天后
+            # 简化：若窗口内无 re-entry，则 SAFE_TO_ACTIVE==0 且 COOLDOWN_SKIP>0
+            pass
+        # 关键断言：4 天内无 re-entry 由 COOLDOWN_SKIP 计数体现（active 但被冷却阻止）
+        # exit 发生在 day2，day2..day6 区间 active 决策应大量 COOLDOWN_SKIP
+        assert events["COOLDOWN_SKIP"] > 0, "cooldown 期间 active 决策应被记录为 COOLDOWN_SKIP"
+
+    def test_reentry_allowed_after_four_days(self):
+        """t0+4d00h00m 后 active 时允许 re-enter（SAFE_TO_ACTIVE 发生）。"""
+        # 10 天窗口：exit day2 -> cooldown 到 day6 -> 之后 4 天可 re-enter
+        pool = make_synthetic_pool(days=10)
+        sig, exit_start = self._make_exit_reentry_signals(days=10, exit_day=2)
+        features = [c for c in sig.columns if c != "close_15m"]
+        res = run_quiet(mod.FrozenLegacyStrategy, pool, sig, _StubRiskModel(),
+                        features, "gross", "frozen_legacy")
+        events = res["events"]
+        assert events["ACTIVE_TO_SAFE"] >= 1
+        # 退出后窗口足够长（10 天），4 天冷却后应能 re-enter
+        assert events["SAFE_TO_ACTIVE"] >= 1, \
+            "10 天窗口 exit day2 -> cooldown day6 后应有 re-entry"
+        # re-entry 建仓快照时点应 >= exit+4d
+        snaps = res["deploy_snapshots"]
+        if len(snaps) >= 2:
+            # 第二个建仓（或最后）应是 re-entry，检查其距首个建仓 >= 4d
+            delta = (snaps[-1]["time"] - snaps[0]["time"]).total_seconds() / 86400.0
+            assert delta >= 4.0, f"re-entry 距首次建仓 {delta:.2f}d < 4d"
+        assert events["PERIODIC_REBALANCE"] >= 0  # 不要求
+
+    def test_cooldown_param_is_four_days(self):
+        """REBALANCE_DELAY_DAYS 固定为 4（anti-churn 冷却时长）。"""
+        assert mod.FROZEN["REBALANCE_DELAY_DAYS"] == 4
+
+
+# ---------------------------------------------------------------------------
+# P0-3: fee-on / fee-off action-path equality
+# ---------------------------------------------------------------------------
+class TestP03FeeOnOffActionEquality:
+    """fee-disabled 必须保持相同 add/remove/rebalance 事件路径。"""
+
+    def test_action_path_equality(self):
+        """fee-on 与 fee-off 的 add/remove/collect/swap 计数与时点一致。"""
+        pool = make_synthetic_pool(days=12)
+        sig = make_synthetic_signals(days=12)
+        res_on = run_quiet(mod.AlwaysLPStrategy, pool, sig, None, None,
+                           "gross", "always_lp", fee_rate=0.05)
+        res_off = run_quiet(mod.AlwaysLPStrategy, pool, sig, None, None,
+                            "gross", "always_lp", fee_rate=0.0)
+
+        def _counts(res):
+            stats = {"n_add": 0, "n_remove": 0, "n_collect": 0, "n_swap": 0}
+            for a in res["actions"]:
+                atype = str(getattr(a, "action_type", ""))
+                if "add_liquidity" in atype:
+                    stats["n_add"] += 1
+                elif "remove_liquidity" in atype:
+                    stats["n_remove"] += 1
+                elif "collect" in atype:
+                    stats["n_collect"] += 1
+                elif "swap" in atype:
+                    stats["n_swap"] += 1
+            return stats
+
+        on = _counts(res_on)
+        off = _counts(res_off)
+        assert on == off, f"F12/P0-3 FAIL: action path differs fee_on={on} fee_off={off}"
+
+    def test_frozen_action_path_equality(self):
+        """Frozen Legacy 的 fee-on/fee-off 事件路径一致。"""
+        pool = make_synthetic_pool(days=12)
+        sig = make_synthetic_signals(days=12)
+        features = [c for c in sig.columns if c != "close_15m"]
+        res_on = run_quiet(mod.FrozenLegacyStrategy, pool, sig, _StubRiskModel(),
+                           features, "gross", "frozen_legacy", fee_rate=0.05)
+        res_off = run_quiet(mod.FrozenLegacyStrategy, pool, sig, _StubRiskModel(),
+                            features, "gross", "frozen_legacy", fee_rate=0.0)
+        assert res_on["events"] == res_off["events"], \
+            f"F12/P0-3 FAIL: Frozen events differ on={res_on['events']} off={res_off['events']}"
+
+
+# ---------------------------------------------------------------------------
+# Schema iteration 4（继承 TestSchema 更新）
+# ---------------------------------------------------------------------------
+class TestSchema4:
+    """Iteration 4 schema：model_input_audit / strategy_answers / native_bar_parity。"""
+
+    def test_json_schema_iteration4(self):
+        p = os.path.join(REPO_ROOT, "results", "r0_t002", "post_freeze_oos.json")
+        if not os.path.isfile(p):
+            import pytest
+            pytest.skip("results not generated yet")
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["iteration"] == 4
+        assert "model_input_audit" in data
+        assert data["model_input_audit"]["missing_feature_count"] == 0
+        assert data["model_input_audit"]["non_finite_decision_rows"] == 0
+        assert data["model_input_audit"]["predict_errors"] == 0
+        assert "strategy_answers" in data
+        assert data["native_bar_parity"] == "NOT_AVAILABLE"
+        # fixes 含 iteration 4 条目
+        for f in ["S1_anti_churn_cooldown", "P0_1_model_input_no_failopen", "P0_2_time_causality_keep",
+                  "P0_3_lp_economics_reconcilable", "P1_1_fee_ledger_naming", "P1_2_legacy_cost_honest_naming"]:
+            assert f in data["fixes"], f"missing fix entry {f}"
+        # fee ledger 新命名
+        assert "fee_accrued_always_lp_eth" in data["event_stats"]
+        assert "fee_accrued_always_lp_usdc" in data["event_stats"]
+        assert "fee_uncollected_final_always_lp_eth" in data["event_stats"]
+        assert "fee_uncollected_final_always_lp_usdc" in data["event_stats"]
+

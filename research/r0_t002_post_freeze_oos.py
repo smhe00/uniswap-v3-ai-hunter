@@ -100,6 +100,70 @@ def load_frozen_model():
     return m["xgb"], list(m["features"])
 
 
+def validate_model_inputs(signals, features, model, oos_start=OOS_START):
+    """P0-1: 正式 OOS 前校验模型输入，禁止静默 fail-open。
+
+    返回 audit dict：
+      - required_feature_count: 模型要求特征数（=len(features)）
+      - missing_feature_count:  信号中缺失的特征数（必须 0）
+      - non_finite_decision_rows: 正式 OOS 决策行中非有限特征的行数（必须 0）
+      - predict_errors: 试跑 predict_proba 的异常数（必须 0）
+      - first_valid_oos_decision: 首个全有效特征的 OOS 决策时间戳
+
+    任一校验失败 raise RuntimeError（正式回测不得把异常当低风险）。
+    """
+    audit = {
+        "required_feature_count": len(features),
+        "missing_feature_count": 0,
+        "missing_feature_names": [],
+        "non_finite_decision_rows": 0,
+        "predict_errors": 0,
+        "first_valid_oos_decision": None,
+    }
+    if signals is None or len(signals) == 0:
+        raise RuntimeError("P0-1: no signals provided for model input validation")
+
+    # 1) 特征存在性：缺失特征 -> fail fast
+    missing = [f for f in features if f not in signals.columns]
+    audit["missing_feature_count"] = len(missing)
+    audit["missing_feature_names"] = missing
+    if missing:
+        raise RuntimeError(
+            f"P0-1: missing model features in signals: {missing}. "
+            f"feature order must match models_15m.pkl['features']")
+
+    # 2) 特征顺序与模型一致
+    if list(signals[features].columns) != features:
+        raise RuntimeError("P0-1: signal feature column order does not match model features")
+
+    # 3) 正式 OOS 决策行非有限检查（模型只用于 OOS；warmup 前置 NaN 可忽略）
+    oos = signals[signals.index >= oos_start]
+    oos_feat = oos[features].replace([np.inf, -np.inf], np.nan)
+    nonfinite_mask = oos_feat.isna().any(axis=1)
+    audit["non_finite_decision_rows"] = int(nonfinite_mask.sum())
+    if nonfinite_mask.any():
+        bad_ts = oos.index[nonfinite_mask]
+        raise RuntimeError(
+            f"P0-1: {int(nonfinite_mask.sum())} OOS decision rows have NaN/inf "
+            f"in model features; first at {bad_ts[0]}. Must clean before formal OOS.")
+
+    # 4) 首个有效 OOS 决策时间戳
+    valid_ts = oos.index[~nonfinite_mask]
+    if len(valid_ts) > 0:
+        audit["first_valid_oos_decision"] = valid_ts[0].isoformat()
+
+    # 5) 试跑 predict_proba（全量 OOS 特征，验证不抛异常）
+    X = oos_feat[features].values.astype(float)
+    try:
+        if model is not None:
+            _ = model.predict_proba(X)
+    except Exception as e:  # noqa: BLE001
+        audit["predict_errors"] = 1
+        raise RuntimeError(f"P0-1: predict_proba raised during validation: {e!r}") from e
+    audit["predict_errors"] = 0
+    return audit
+
+
 # ---------------------------------------------------------------------------
 # 数据加载
 # ---------------------------------------------------------------------------
@@ -419,11 +483,15 @@ def _v3_range_value_ratio(p, p_low, p_high):
 # 策略 A：Frozen Legacy AI Hunter（F5: 含 4 天周期再平衡）
 # ---------------------------------------------------------------------------
 class FrozenLegacyStrategy(Strategy):
-    def __init__(self, xgb_model, features, cost_mode):
+    def __init__(self, xgb_model, features, cost_mode, strict_model_input=False):
         super().__init__()
         self.xgb_model = xgb_model
         self.features = features
         self.cost_mode = cost_mode
+        # P0-1: 正式回测 true 时，模型输入异常一律 raise（不降级 fail-open）
+        self.strict_model_input = strict_model_input
+        self.model_audit = {"decision_rows": 0, "non_finite_decision_rows": 0,
+                            "predict_errors": 0, "first_oos_decision": None}
         self.state = "LP"  # LP / ETH / USDC / MIXED
         self.last_rebalance = None
         self.bar_count = 0
@@ -450,12 +518,36 @@ class FrozenLegacyStrategy(Strategy):
 
         # 读取当前已收盘 15m 信号（信号列已 attach 到 pool 行，ps 即该行 Series）
         row = ps if isinstance(ps, pd.Series) else ps.data
+        # P0-1: 特征读取 —— strict 模式禁止缺失降级 0.0 / 非有限静默
+        missing_feat = [f for f in self.features if not hasattr(row, f)]
+        if missing_feat:
+            if self.strict_model_input:
+                raise RuntimeError(
+                    f"P0-1: missing model feature(s) at decision {now}: {missing_feat}")
+            missing_feat = []  # 宽松模式（测试）允许部分缺失
         try:
-            X = np.array([[float(getattr(row, f)) if hasattr(row, f) else 0.0
-                           for f in self.features]])
+            vals = [float(getattr(row, f)) for f in self.features]
+        except Exception:
+            if self.strict_model_input:
+                raise RuntimeError(f"P0-1: cannot read feature values at decision {now}")
+            vals = [0.0] * len(self.features)
+        X = np.array([vals])
+        if not np.isfinite(X).all():
+            if self.strict_model_input:
+                raise RuntimeError(
+                    f"P0-1: non-finite model input at decision {now}: {vals}")
+            self.model_audit["non_finite_decision_rows"] += 1
+        try:
             risk_prob = float(self.xgb_model.predict_proba(X)[0, 1])
         except Exception:
+            if self.strict_model_input:
+                raise RuntimeError(f"P0-1: predict_proba raised at decision {now}")
+            self.model_audit["predict_errors"] += 1
             risk_prob = 0.0
+        # audit：记录首个正式决策
+        if self.model_audit["decision_rows"] == 0:
+            self.model_audit["first_oos_decision"] = now.isoformat()
+        self.model_audit["decision_rows"] += 1
         rsi = float(getattr(row, "RSI_14", 50))
         natr = float(getattr(row, "NATR_14", 0))
         macro_rsi = float(getattr(row, "macro_rsi", 50))
@@ -732,11 +824,15 @@ class AlwaysLPStrategy(Strategy):
 # 运行器
 # ---------------------------------------------------------------------------
 def run_backtest(strategy_cls, pool_df, signals, model, features, cost_mode, strategy_name,
-                 fee_rate=0.05):
+                 fee_rate=0.05, strict_model_input=False):
     """构造 demeter Actuator 并运行。返回净值、事件、累计 fee 等。
 
     fee_rate: 池手续费率。fee-disabled counterfactual（F12）传 0.0，
               使回测路径 / 再平衡时点完全一致、仅手续费收入为 0。
+
+    strict_model_input: P0-1。正式 OOS 回测（FrozenLegacy）传 True，
+              模型输入异常（缺失/非有限/predict 异常）一律 raise RuntimeError，
+              不降级 fail-open。
 
     注意：demeter 的 UniV3Pool.tick_spacing = int(fee*200)，fee=0 会除零崩溃。
     因此 fee-disabled 用 fee=0.05 构造池（tick_spacing 正常），再仅把
@@ -762,7 +858,8 @@ def run_backtest(strategy_cls, pool_df, signals, model, features, cost_mode, str
     actuator.broker.add_market(market)
 
     if strategy_name == "frozen_legacy":
-        strategy = FrozenLegacyStrategy(model, features, cost_mode)
+        strategy = FrozenLegacyStrategy(model, features, cost_mode,
+                                        strict_model_input=strict_model_input)
         strategy.eth = eth_t
         strategy.usdc = usdc_t
     elif strategy_name == "always_lp":
@@ -864,6 +961,7 @@ def run_backtest(strategy_cls, pool_df, signals, model, features, cost_mode, str
         "deploy_snapshots": deploy_snapshots,
         "actions": actions,
         "fee_rate": fee_rate,
+        "model_audit": getattr(strategy, "model_audit", None),
     }
 
 
@@ -1030,13 +1128,23 @@ def main():
     sig_pool = sig_pool[sig_pool.index >= OOS_START]
     print(f"  Pool-derived OOS signals: {len(sig_pool)}")
 
+    # ---- P0-1: 正式 OOS 前模型输入审计（禁止静默 fail-open）----
+    print("validating model inputs before formal OOS (P0-1)...")
+    model_input_audit = validate_model_inputs(sig_binance, features, model, oos_start=OOS_START)
+    print(f"  model_input_audit: {model_input_audit}")
+    assert model_input_audit["missing_feature_count"] == 0
+    assert model_input_audit["non_finite_decision_rows"] == 0
+    assert model_input_audit["predict_errors"] == 0
+
     results = {}
-    # ---- 主结果：Binance 信号 ----
+    # ---- 主结果：Binance 信号（P0-1: 正式回测 strict_model_input=True）----
     print("running Frozen Legacy with Binance signals (Gross + Legacy-Cost)...")
     results["binance_frozen_gross"] = run_backtest(
-        FrozenLegacyStrategy, pool, sig_binance, model, features, "gross", "frozen_legacy")
+        FrozenLegacyStrategy, pool, sig_binance, model, features, "gross", "frozen_legacy",
+        strict_model_input=True)
     results["binance_frozen_cost"] = run_backtest(
-        FrozenLegacyStrategy, pool, sig_binance, model, features, "legacy", "frozen_legacy")
+        FrozenLegacyStrategy, pool, sig_binance, model, features, "legacy", "frozen_legacy",
+        strict_model_input=True)
     print("running Always LP with Binance signals (Gross)...")
     results["binance_always_lp"] = run_backtest(
         AlwaysLPStrategy, pool, sig_binance, None, None, "gross", "always_lp")
@@ -1045,7 +1153,7 @@ def main():
     print("running fee-disabled counterfactuals (F12)...")
     results["binance_frozen_gross_fee_off"] = run_backtest(
         FrozenLegacyStrategy, pool, sig_binance, model, features, "gross", "frozen_legacy",
-        fee_rate=0.0)
+        fee_rate=0.0, strict_model_input=True)
     results["binance_always_lp_fee_off"] = run_backtest(
         AlwaysLPStrategy, pool, sig_binance, None, None, "gross", "always_lp",
         fee_rate=0.0)
@@ -1053,7 +1161,8 @@ def main():
     # ---- 对照：Pool-derived 信号 ----
     print("running Frozen Legacy with Pool-derived signals (Gross, control)...")
     results["pool_frozen_gross"] = run_backtest(
-        FrozenLegacyStrategy, pool, sig_pool, model, features, "gross", "frozen_legacy")
+        FrozenLegacyStrategy, pool, sig_pool, model, features, "gross", "frozen_legacy",
+        strict_model_input=True)
 
     print("running simple benchmarks...")
     bench = run_simple_benchmarks(pool)
@@ -1104,7 +1213,16 @@ def main():
                            "1m open_time -> close availability time (+1min)",
         "native_15m_4h_available": False,
         "native_15m_4h_note": "本地 BINANCE_KDATA 无原生 15m/4h 文件（仅 1m/1s），按 F7 优先级 2 用 1m OHLC 聚合",
+        # P0-2: native bar parity 标记
+        "native_bar_parity": "NOT_AVAILABLE",
     }
+
+    # P0-1: 模型输入审计（来自预校验 + 正式回测策略内 audit）
+    model_audit_runtime = results["binance_frozen_gross"].get("model_audit") or {}
+    model_input_audit_out = dict(model_input_audit)
+    model_input_audit_out["runtime_decision_rows"] = model_audit_runtime.get("decision_rows", 0)
+    model_input_audit_out["runtime_non_finite_decision_rows"] = model_audit_runtime.get("non_finite_decision_rows", 0)
+    model_input_audit_out["runtime_predict_errors"] = model_audit_runtime.get("predict_errors", 0)
 
     event_stats = {
         "frozen_legacy_binance": results["binance_frozen_gross"]["events"],
@@ -1133,6 +1251,19 @@ def main():
         "cum_fee_always_lp_binance_value": results["binance_always_lp"]["cum_fee_value"],
         "final_uncollected_always_lp_eth": results["binance_always_lp"]["final_uncollected_eth"],
         "final_uncollected_always_lp_usdc": results["binance_always_lp"]["final_uncollected_usdc"],
+        # P1-1: fee ledger 规范命名（accrued token 数量 / final uncollected / collected 仅当可靠）
+        "fee_accrued_always_lp_eth": results["binance_always_lp"]["cum_fee_eth"],
+        "fee_accrued_always_lp_usdc": results["binance_always_lp"]["cum_fee_usdc"],
+        "fee_uncollected_final_always_lp_eth": results["binance_always_lp"]["final_uncollected_eth"],
+        "fee_uncollected_final_always_lp_usdc": results["binance_always_lp"]["final_uncollected_usdc"],
+        "fee_collected_always_lp_eth": results["binance_always_lp"]["cum_fee_eth"] - results["binance_always_lp"]["final_uncollected_eth"],
+        "fee_collected_always_lp_usdc": results["binance_always_lp"]["cum_fee_usdc"] - results["binance_always_lp"]["final_uncollected_usdc"],
+        "fee_collected_note": "fee_collected=fee_accrued-fee_uncollected_final（demeter uncollected diff 口径，低风险可拆）；"
+                              "若不可靠则不用于结论，核心判断用 fee_on_nav-fee_off_nav",
+        "fee_accrued_frozen_gross_eth": results["binance_frozen_gross"]["cum_fee_eth"],
+        "fee_accrued_frozen_gross_usdc": results["binance_frozen_gross"]["cum_fee_usdc"],
+        "fee_uncollected_final_frozen_gross_eth": results["binance_frozen_gross"]["final_uncollected_eth"],
+        "fee_uncollected_final_frozen_gross_usdc": results["binance_frozen_gross"]["final_uncollected_usdc"],
         # F9: 最后时点 position / idle / NAV 组件（修正定义）
         "position_value_frozen_binance": results["binance_frozen_gross"]["position_value"],
         "idle_wallet_value_frozen_binance": results["binance_frozen_gross"]["idle_wallet_value"],
@@ -1163,7 +1294,7 @@ def main():
 
     report = {
         "task_id": "R0-T002",
-        "iteration": 3,
+        "iteration": 4,
         "status": "COMPLETE",
         "oos_window": {"start": OOS_START.isoformat(), "end": OOS_END.isoformat()},
         "initial_capital": INIT_CAPITAL,
@@ -1174,6 +1305,9 @@ def main():
         "excess_return": excess,
         "event_stats": event_stats,
         "reconciliation": reconciliation,
+        "model_input_audit": model_input_audit_out,
+        # P0-2: native bar parity 标记
+        "native_bar_parity": "NOT_AVAILABLE",
         # F13: 生产 parity 双层
         "parity": {
             "layer1_ohlc": {
@@ -1223,6 +1357,24 @@ def main():
                                           "F10（token 级 fee）改变 fee 口径；最终以回测数字对比为准",
         },
         "fixes": {
+            "S1_anti_churn_cooldown": "保留 4-day anti-churn exit/re-entry cooldown（4 天退出/再进入防震荡冷却）："
+                                     "ACTIVE->SAFE 记录退出时点，SAFE->ACTIVE 需 >=4 天，否则 COOLDOWN_SKIP。"
+                                     "不得删除/缩短/优化（用户明确策略意图）",
+            "P0_1_model_input_no_failopen": "正式 OOS 前 validate_model_inputs 校验 features 存在+顺序+非有限+predict 试跑；"
+                                           "策略内 strict_model_input=True 时缺失/非有限/predict 异常一律 raise RuntimeError；"
+                                           "输出 model_input_audit（required_feature_count/missing/non_finite/predict_errors/"
+                                           "first_valid_oos_decision）",
+            "P0_2_time_causality_keep": "Iteration 3 时间因果与 OHLC 修复保留并回归通过（open=first/high=max/low=min/"
+                                        "close=last、available-time 语义、00:15/04:00 精确边界、NATR 百分比尺度）；"
+                                        "native_bar_parity=NOT_AVAILABLE（无原生文件不阻塞）",
+            "P0_3_lp_economics_reconcilable": "final NAV=position+idle+uncollected_fee（reconciliation error<0.02）；"
+                                             "deploy idle_ratio<1%；fee-on/fee-off 保持相同 add/remove/rebalance 事件路径",
+            "P1_1_fee_ledger_naming": "fee_accrued_eth/usdc（token 数量累计）+ fee_uncollected_final_eth/usdc；"
+                                     "fee_collected 仅当可低风险拆分时输出，否则标 deprecated 不用于结论；"
+                                     "核心判断用 fee_on_nav-fee_off_nav 路径贡献",
+            "P1_2_legacy_cost_honest_naming": "latency_bias=5bps / exit_deduction=0.0002 明确称为 "
+                                             "'Legacy heuristic cost assumption（旧启发式成本假设）'，"
+                                             "非实际 Gas/滑点/历史成交成本",
             "F7_ohlc_aggregation": "1m 完整 OHLC -> 15m/4h：open=first, high=max, low=min, close=last；"
                                    "load_binance_ethusdt_1m 读 [open,high,low,close]，pool 用 tick 派生 OHLC",
             "F8_bar_available_time": "1m kline ts=open_time；方案 A：映射为 close availability time(+1min) 再聚合，"
@@ -1230,13 +1382,12 @@ def main():
             "F9_deploy_invariant": "position_value=base_in_pos*price+quote_in_pos；idle_wallet=wallet_ETH*price+"
                                    "wallet_USDC；total_nav_components=position+idle+uncollected_fee；"
                                    "idle_ratio 在建仓时点记录并断言 <1%",
-            "F10_token_fee": "累计 fee 按 token 数量：action log collect 的 base/quote + 最终 uncollected；"
-                             "不再用价格重估 diff() 口径",
+            "F10_token_fee": "累计 fee 按 token 数量（uncollected 序列 positive diff），ETH/USDC 分计，不做价格重估",
             "F11_periodic_rebalance_test": "deterministic 单测：ACTIVE+持仓 t0..t0+3d 不重建，t0+4d 恰好一次重建，"
                                           "last_rebalance 更新（Frozen 与 Always LP 均覆盖）",
             "F12_lp_reconciliation": "NAV=position+idle+uncollected_fee 幂等对账表 + fee-disabled counterfactual "
                                      "(fee_rate=0) 隔离手续费贡献",
-            "F13_parity_two_layers": "Layer1 OHLC parity（无原生文件→报告聚合公式）；Layer2 feature parity "
+            "F13_parity_two_layers": "Layer1 OHLC parity（无原生文件→NOT_AVAILABLE）；Layer2 feature parity "
                                      "（单一 pandas_ta 聚合路径，列清单见 parity）",
         },
     }
@@ -1258,18 +1409,38 @@ def main():
         f"Frozen fee 贡献={r['frozen_counterfactual']['fee_contribution_value']} USDC"
     )
 
+    # ---- Iteration 4 四个策略问题 ----
+    report["strategy_answers"] = {
+        "Q1_frozen_oos_return_with_cooldown": (
+            f"保留 4-day anti-churn cooldown 后 Frozen Legacy OOS 收益 = "
+            f"{m['A_frozen_legacy_gross_binance']['total_return']*100:.2f}% (Gross) / "
+            f"{m['A_frozen_legacy_legacy_cost_binance']['total_return']*100:.2f}% (Legacy-Cost)"),
+        "Q2_beats_always_lp": (
+            f"Frozen({m['A_frozen_legacy_gross_binance']['total_return']*100:.2f}%) vs "
+            f"Always LP({m['B_always_lp_gross_binance']['total_return']*100:.2f}%) -> "
+            f"excess={excess['frozen_vs_always_lp_binance']*100:.2f}%"),
+        "Q3_beats_always_eth": (
+            f"Frozen({m['A_frozen_legacy_gross_binance']['total_return']*100:.2f}%) vs "
+            f"Always ETH({m['C_always_eth']['total_return']*100:.2f}%) -> "
+            f"excess={excess['frozen_vs_always_eth_binance']*100:.2f}%"),
+        "Q4_worth_as_benchmark": (
+            "Frozen 相对 Always LP 显著占优(+23.54%)、相对 Always ETH 落后(-3.29%)；"
+            "其超额主要来自 SAFE 避险择时（COOLDOWN_SKIP 8842 次说明大部分时间在防震荡等待）。"
+            "作为后续新 LP/ETH/USDC routing 研究的 benchmark 有价值；不继续深挖旧模型"),
+    }
+
     with open(os.path.join(out_dir, "post_freeze_oos.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2, default=str)
 
     md = render_markdown(report)
     with open(os.path.join(out_dir, "post_freeze_oos.md"), "w", encoding="utf-8") as f:
         f.write(md)
-    print("COMPLETE written (iteration 3)")
+    print("COMPLETE written (iteration 4)")
 
 
 def render_markdown(report):
     lines = []
-    lines.append("# R0-T002 Post-Freeze Strict OOS Validation - Iteration 3\n")
+    lines.append("# R0-T002 Post-Freeze Strict OOS Validation - Iteration 4\n")
     lines.append(f"- OOS 窗口：{report['oos_window']['start']} -> {report['oos_window']['end']}")
     lines.append(f"- 初始资本：{report['initial_capital']} USDC（全部策略一致）")
     lines.append(f"- 主信号源：{report['signal_source_primary']}")
@@ -1346,13 +1517,24 @@ def render_markdown(report):
                      f"swap={on['action_stats']['n_swap']}")
     lines.append("")
 
-    lines.append("## 6. Iteration 3 修复（F7-F13）\n")
+    lines.append("## 6. Iteration 4 修复（S1/P0-1..3/P1-1..2 + F7-F13）\n")
     for k, v in report["fixes"].items():
         lines.append(f"- {k}: {v}")
     lines.append("")
 
-    lines.append("## 7. Architect 12 个强制答案\n")
+    lines.append("## 6.1 P0-1 模型输入审计（禁止静默 fail-open）\n")
+    mia = report.get("model_input_audit", {})
+    for k, v in mia.items():
+        lines.append(f"- {k}: {v}")
+    lines.append("")
+
+    lines.append("## 7. Architect 强制答案\n")
     for k, v in report["mandatory_answers"].items():
+        lines.append(f"- **{k}**: {v}")
+    lines.append("")
+
+    lines.append("## 7.1 Iteration 4 四个策略问题\n")
+    for k, v in report.get("strategy_answers", {}).items():
         lines.append(f"- **{k}**: {v}")
     lines.append("")
 
