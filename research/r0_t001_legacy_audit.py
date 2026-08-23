@@ -358,12 +358,12 @@ def build_claim_matrix():
         "仅 README.md。v3_hunter_monte_carlo.py 只跑 10 次随机（range(10)），SUCCESS=(res_df>0).mean()*100；10 次随机不可能得 91.7%（9/10=90%, 10/10=100%），与代码不匹配",
         "本地 raw.csv（部分）",
         MANUAL_SUMMARY,
-        OVERLAP,
+        UNKNOWN,   # F4: 与 leakage matrix 一致（模型训练窗口未知 → 无法判定严格 OOS）
         "不可信 / 与代码不匹配",
         True,
         {"v3_hunter_monte_carlo.py": "for i in range(10) / SUCCESS mean",
          "README.md": "蒙特卡罗胜率 91.7%",
-         "note": "91.7% 无法由 10 次运行产生（非 10 的整数倍）"},
+         "note": "91.7% 无法由 10 次运行产生（非 10 的整数倍）；OOS 因模型训练窗口未知标为 UNKNOWN"},
     )
 
     # --- 8. +40.44% / +47.65% / +32.88% / +24.15% ---

@@ -1,6 +1,6 @@
 {
   "report_id": "R0-T001-legacy-claim-audit",
-  "generated_at": "2026-08-23T08:43:06.923920",
+  "generated_at": "2026-08-23T09:32:26.225552",
   "remote_head_consumed": "04ac458c4154ceb5780980a1b2c2eb45c0f6b54b",
   "claim_matrix": [
     {
@@ -134,13 +134,13 @@
       "code_source": "仅 README.md。v3_hunter_monte_carlo.py 只跑 10 次随机（range(10)），SUCCESS=(res_df>0).mean()*100；10 次随机不可能得 91.7%（9/10=90%, 10/10=100%），与代码不匹配",
       "data_source": "本地 raw.csv（部分）",
       "classification": "MANUAL_SUMMARY",
-      "oos_status": "OVERLAP",
+      "oos_status": "UNKNOWN",
       "credibility": "不可信 / 与代码不匹配",
       "recommend_rerun": true,
       "evidence": {
         "v3_hunter_monte_carlo.py": "for i in range(10) / SUCCESS mean",
         "README.md": "蒙特卡罗胜率 91.7%",
-        "note": "91.7% 无法由 10 次运行产生（非 10 的整数倍）"
+        "note": "91.7% 无法由 10 次运行产生（非 10 的整数倍）；OOS 因模型训练窗口未知标为 UNKNOWN"
       }
     },
     {

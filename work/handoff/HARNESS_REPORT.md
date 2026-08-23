@@ -6,32 +6,29 @@
 ## 1. Task Identity（任务标识）
 
 - task_id: **R0-T001**
-- iteration: 2（Architect CHANGES_REQUIRED → 窄范围修正）
-- consumed_handoff_id: **R0-T001-ARCH-20260823-002**
-- base_remote_head: `84c751cd5c116ece6d9731d3332432e5b6b807ff`（本轮任务基线）
+- iteration: 3（Architect CHANGES_REQUIRED → 一致性修正 F4）
+- consumed_handoff_id: **R0-T001-ARCH-20260823-003**
+- base_remote_head: `95a98e4d865edef3eda6aac85b1007ef4af41ff3`（本轮任务基线）
 - result_commit: `PENDING_SELF`（随 commit 推送，最终 SHA 以远端 remote_head 为准）
 
-## 1.1 Architect Review 处置摘要（Iteration 1 → 2）
+## 1.1 Architect Review 处置摘要（Iteration 2 → 3）
 
 | Finding | 处置 |
 | :-- | :-- |
-| F1 — `.gitignore` Allowed Files 违规 | 已撤销两行越界新增，`.gitignore` 恢复至任务基线 `04ac458` 内容，工作区 diff 为空 |
-| F2 — 缺失模型测试未真正覆盖 | `_analyze_model_metadata()` 增加 `model_path` 参数注入；新测试构造不存在的路径，断言 `exists is False` 且 `status == "UNVERIFIED"` |
-| F3 — MC OOS 判定过度 | `v3_hunter_monte_carlo.py` 的 `strict_oos` 从 `OVERLAP` 改为 `UNKNOWN`，`future_data` 改为 `UNKNOWN`；91.7% 不可复现结论保持不变 |
+| F4 — Claim C7 与 Leakage Matrix 的 OOS 状态不一致 | Claim `R0-T001-C7` 的 `oos_status` 从 `OVERLAP` 改为 `UNKNOWN`，与 `v3_hunter_monte_carlo.py` 的 `strict_oos=UNKNOWN` 一致；保留"91.7% 无法由 range(10) 产生"的可信度判断 |
 
 ## 2. Changed Files（变更文件）
 
 | 文件 | 说明 |
 | :-- | :-- |
-| `.gitignore` | 恢复至基线（撤销 Iteration 1 越界新增的 `.pytest_cache/`、`pytest-cache-files-*/` 两行；本次为 Architect 特别授权） |
-| `research/r0_t001_legacy_audit.py` | `_analyze_model_metadata()` 支持 `model_path` 注入；MC OOS 改为 UNKNOWN |
-| `tests/test_r0_t001_legacy_audit.py` | 重写缺失模型测试（F2）；MC 测试改为断言 UNKNOWN（F3） |
-| `results/r0_t001/legacy_claim_audit.json` | 重新生成（MC 泄漏条目 UNKNOWN） |
+| `research/r0_t001_legacy_audit.py` | Claim R0-T001-C7 `oos_status` OVERLAP → UNKNOWN |
+| `tests/test_r0_t001_legacy_audit.py` | 新增 `test_claim_c7_and_leakage_consistent_unknown` 一致性断言 |
+| `results/r0_t001/legacy_claim_audit.json` | 重新生成（C7 oos_status=UNKNOWN） |
 | `results/r0_t001/legacy_claim_audit.md` | 重新生成 |
 | `work/handoff/HARNESS_REPORT.md` | 本报告 |
 | `work/control/WORKFLOW_STATE.yaml` | state → REVIEW_READY（见 §交接） |
 
-未修改：README.md、全部旧策略 / 回测脚本、models_15m.pkl、协议文件、LOCAL_HARNESS_INIT.md、本地原始数据。
+未修改：`.gitignore`、README.md、全部旧策略 / 回测脚本、models_15m.pkl、协议文件、LOCAL_HARNESS_INIT.md、本地原始数据。
 
 ## 3. Local Data Used（本地数据证据表，协议 §9.2）
 
@@ -69,7 +66,7 @@ python -c "..."  # 见审计工具 _analyze_model_metadata()
 
 ## 5. Test Results（测试结果）
 
-`14 passed in 0.13s`（pytest 9.0.2, Python 3.12.10）
+`15 passed in 0.13s`（pytest 9.0.2, Python 3.12.10）
 
 覆盖（CURRENT_TASK.md §12）：
 1. ✅ HARD_CODED 识别（32.88*0.85、timedelta(days=4)）
@@ -78,13 +75,18 @@ python -c "..."  # 见审计工具 _analyze_model_metadata()
 4. ✅ README 无证据结论不可信（$29,270 / +40.3% / 91.7%）
 5. ✅ JSON schema 稳定
 6. ✅ 缺依赖降级 UNVERIFIED、不伪造 PASS（真实构造模型缺失场景）
+7. ✅ F4 一致性：Claim C7 与 Leakage Matrix 的 OOS 均为 UNKNOWN
 
 ## 5.1 Required Validation（Architect 要求记录）
 
-1. **`.gitignore` 已恢复至基线**：撤销 Iteration 1 越界新增的 `.pytest_cache/`、`pytest-cache-files-*/` 两行，`git diff 5ddaa3f -- .gitignore` 输出为空，工作区版本与任务基线一致。
-2. **缺失模型测试的真实断言结果**：`test_missing_model_degrades_to_unverified` 注入不存在的路径，断言 `meta["exists"] is False` 且 `meta["status"] == "UNVERIFIED"`，单独运行 `1 passed`。
-3. **Monte Carlo OOS 改为 UNKNOWN 的理由**：技术指标由历史价格滚动/重采样计算，`merge_asof(direction='backward')` 并入既有信号，未发现明确 look-ahead；但 `models_15m.pkl` 训练来源（训练脚本/标签/窗口/切分）缺失，无法判定随机测试窗口是否属于严格样本外，故 `strict_oos=UNKNOWN`、`future_data=UNKNOWN`。`91.7%` 仍维持不可复现结论。
-4. **更新后的测试总数和 PASS 数**：`14 passed in 0.13s`（14 个测试全部通过，0 失败）。
+1. **Claim C7 与 Leakage Matrix 的 OOS 状态均为 `UNKNOWN`**：`results/r0_t001/legacy_claim_audit.json` 中 `claims["R0-T001-C7"]["oos_status"] == "UNKNOWN"`，`leakage_matrix[v3_hunter_monte_carlo.py]["strict_oos"] == "UNKNOWN"`，两者一致；生成的 Markdown Claim Matrix 对应行亦为 `UNKNOWN`。
+2. **测试总数、PASS 数**：`15 passed in 0.13s`（15 个测试全部通过，0 失败）。
+3. **实际运行命令**：
+   ```bash
+   python research/r0_t001_legacy_audit.py
+   python -m pytest -q -p no:cacheprovider tests/test_r0_t001_legacy_audit.py
+   ```
+   审计脚本 exit 0，claims=13。
 
 ## 6. Backtest / Validation Results（审计结果摘要）
 
@@ -98,7 +100,7 @@ python -c "..."  # 见审计工具 _analyze_model_metadata()
 | 最终净值 $29,270 | MANUAL_SUMMARY | UNKNOWN | 不可信 / 无法复现 |
 | 总 ROI +40.3% | MANUAL_SUMMARY | UNKNOWN | 不可信 / 无法复现 |
 | 相对 Alpha +45.3% | MANUAL_SUMMARY | UNKNOWN | 不可信 / 无法复现 |
-| MC 胜率 91.7% | MANUAL_SUMMARY | OVERLAP | 不可信（10 次运行不可能产生 91.7%） |
+| MC 胜率 91.7% | MANUAL_SUMMARY | UNKNOWN | 不可信（10 次运行不可能产生 91.7%；OOS 因模型训练窗口未知为 UNKNOWN） |
 | +40.44% / +24.15% | UNVERIFIED | UNKNOWN | 不可信（仓库无出处） |
 | +47.65% | MANUAL_SUMMARY | UNKNOWN | 不可信（仅注释，无计算） |
 | +32.88% | HARD_CODED | IN_SAMPLE | 不可信（硬编码 32.88*0.85） |
@@ -131,7 +133,7 @@ python -c "..."  # 见审计工具 _analyze_model_metadata()
 ## 8. Reproducibility Notes（可复现性说明）
 
 - 审计工具纯标准库 + 可选依赖，任何 Python 3.12 可重跑，输出确定性
-- 测试在 pytest 9.0.2 下 14 passed；审计脚本 exit 0
+- 测试在 pytest 9.0.2 下 15 passed；审计脚本 exit 0
 - 模型元数据通过 pickle 字节流静态解析，不依赖 deap / xgboost 安装
 - 结果产物：`results/r0_t001/legacy_claim_audit.{json,md}`
 
@@ -160,5 +162,5 @@ python -c "..."  # 见审计工具 _analyze_model_metadata()
 
 ## 11. 交接（CURRENT_TASK.md §17）
 
-- `WORKFLOW_STATE.yaml` 已更新：handoff_seq=4、新 handoff_id、state=REVIEW_READY、owner=architect、authorized_next=[]
+- `WORKFLOW_STATE.yaml` 已更新：handoff_seq=6、新 handoff_id、state=REVIEW_READY、owner=architect、authorized_next=[]
 - 普通 commit + 普通 push 到 main，完成后停止等待 Architect Review。

@@ -1,6 +1,6 @@
 # R0-T001 Legacy Claim Audit（旧系统结论证据审计）
 
-- 生成时间：2026-08-23T08:43:06.924919
+- 生成时间：2026-08-23T09:32:26.225552
 - 消费 remote_head：04ac458c4154ceb5780980a1b2c2eb45c0f6b54b
 
 ## Claim Matrix（结论证据矩阵）
@@ -13,7 +13,7 @@
 | 最终净值 $29,270 来源 | $29,270（AI 猎手最终净值） | 仅 README.md 出现；所有旧脚本 / pkl / 结果文件均无 29,270 值。dual_engine_optimizer.py 有 ROI 输出但未保存该净值，且基准 hardcode 20863 | 无法溯源 | MANUAL_SUMMARY | UNKNOWN | 不可信 / 无法复现 | 是 |
 | 总 ROI +40.3% 来源 | +40.3%（总 ROI） | 仅 README.md。dual_engine_optimizer.py: roi=(final_nav/20863-1)*100，基准 20863 为硬编码，非代码计算值；无 40.3 常量 | 无法溯源 | MANUAL_SUMMARY | UNKNOWN | 不可信 / 无法复现 | 是 |
 | 相对 Alpha +45.3% 来源 | +45.3%（相对 Alpha） | 仅 README.md。代码中无 45.3 常量或输出 | 无法溯源 | MANUAL_SUMMARY | UNKNOWN | 不可信 / 无法复现 | 是 |
-| Monte Carlo 胜率 91.7% 来源 | 91.7%（蒙特卡罗胜率） | 仅 README.md。v3_hunter_monte_carlo.py 只跑 10 次随机（range(10)），SUCCESS=(res_df>0).mean()*100；10 次随机不可能得 91.7%（9/10=90%, 10/10 | 本地 raw.csv（部分） | MANUAL_SUMMARY | OVERLAP | 不可信 / 与代码不匹配 | 是 |
+| Monte Carlo 胜率 91.7% 来源 | 91.7%（蒙特卡罗胜率） | 仅 README.md。v3_hunter_monte_carlo.py 只跑 10 次随机（range(10)），SUCCESS=(res_df>0).mean()*100；10 次随机不可能得 91.7%（9/10=90%, 10/10 | 本地 raw.csv（部分） | MANUAL_SUMMARY | UNKNOWN | 不可信 / 与代码不匹配 | 是 |
 | +40.44% 来源 | +40.44%（任务引用数值） | 当前仓库代码 / README / git 历史均无 40.44 | 无 | UNVERIFIED | UNKNOWN | 不可信 | 是 |
 | +47.65% 来源 | +47.65%（Alpha，注释声称 bear market 验证） | 仅 lp_smart_agent.py 第 18 行注释 'Alpha +47.65% verified in bear market'，无任何计算代码支撑 | 无 | MANUAL_SUMMARY | UNKNOWN | 不可信 / 无计算支撑 | 是 |
 | +32.88% 来源 | +32.88%（Raw Reality Check 输入） | v3_raw_reality_check.py: final_roi_raw = 32.88 * 0.85（硬编码）+ 0.85 'Reality Penalty' 经验系数 | raw.csv（但核心结果硬编码） | HARD_CODED | IN_SAMPLE | 不可信 / 估算冒充回测 | 是 |

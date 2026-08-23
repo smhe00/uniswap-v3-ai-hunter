@@ -54,6 +54,13 @@ class TestOOS:
         leaks = {l["script"]: l for l in audit.build_leakage_matrix()}
         assert leaks["v3_hunter_monte_carlo.py"]["strict_oos"] == audit.UNKNOWN
 
+    def test_claim_c7_and_leakage_consistent_unknown(self):
+        # F4: Claim C7 与 Leakage Matrix 的 OOS 状态必须一致（均为 UNKNOWN）
+        claims = {c["claim_id"]: c for c in audit.build_claim_matrix()}
+        leaks = {l["script"]: l for l in audit.build_leakage_matrix()}
+        assert claims["R0-T001-C7"]["oos_status"] == audit.UNKNOWN
+        assert leaks["v3_hunter_monte_carlo.py"]["strict_oos"] == audit.UNKNOWN
+
 
 class TestCredibility:
     """README 中无证据的结论不能自动判为可信。"""
