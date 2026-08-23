@@ -1,244 +1,340 @@
-# R0-T001 — Legacy Claim Provenance & Reproducibility Audit
+# R0-T002 — Post-Freeze Strict OOS Validation of Legacy AI Hunter
 
-> 研究阶段：R0（旧系统可信度审计）  
-> 任务类型：代码审计 + 本地数据可复现性检查  
+> 研究阶段：R0（旧系统可信度验证）  
+> 任务类型：冻结参数的严格时间外回测  
 > 执行角色：DeepSeek Harness  
 > 安全边界：RESEARCH ONLY / NO ONCHAIN WRITE
 
 ## 1. 研究问题
 
-对当前 `main` 中的旧版 Uniswap V3 AI Hunter 进行系统审计，回答：
+旧版 `uniswap-v3-ai-hunter` 在 2026-03-13 已经形成所谓“最终版本”。本任务不再重新优化旧参数，而是把旧系统视为一个已经冻结的候选策略，回答：
 
-1. README 中每一个核心收益、胜率、区间与风险结论，具体来自哪段代码、哪组数据、哪种计算；
-2. 哪些数字是直接回测计算，哪些是近似、硬编码、经验修正或人工汇总；
-3. 哪些结果存在训练集 / 参数搜索集与验证集重叠；
-4. 哪些模型、参数和结果当前可以完整复现，哪些不可以；
-5. 为下一任务决定：哪些旧策略值得做严格重跑，哪些旧结论应废弃。
+> 在旧代码、旧模型和旧参数冻结之后才发生的 2026-03-14 至 2026-08-21 数据上，旧版 LP / ETH / USDC 三态切换策略是否仍能产生有意义的样本外优势？
 
-本任务不要求重新设计策略，也不要求立即完成全年逐笔重型回测。
+其中：
 
-## 2. 必须读取
+- **LP = Liquidity Provider / Liquidity Position，流动性提供者 / 流动性仓位**；
+- **OOS = Out-of-Sample，样本外验证**；
+- **ETH = Ether，以太币**；
+- **USDC = USD Coin，美元稳定币**。
+
+## 2. 冻结点与严格样本外窗口
+
+旧项目冻结参考：2026-03-13。
+
+本任务统一使用：
+
+```text
+OOS Start = 2026-03-14 00:00:00 UTC
+OOS End   = 2026-08-21 23:59:59 UTC（或本地数据可用的最后完整时点）
+```
+
+必须满足：
+
+1. 不允许使用 2026-03-14 之后的数据重新训练模型；
+2. 不允许使用 2026-03-14 之后的数据重新优化任何阈值、区间、冷却期或成本参数；
+3. 如果实际数据末端早于 2026-08-21 23:59:59 UTC，报告必须写明最后完整时点；
+4. 如果模型或参数文件的 Git 历史证明其冻结时间晚于 2026-03-13，则立即报告 `BLOCKED`，不得伪称严格 OOS。
+
+## 3. 必须读取
 
 - `README.md`
 - `lp_smart_agent.py`
 - `dual_engine_optimizer.py`
 - `wide_range_study.py`
 - `demeter_asymmetric_backtest.py`
-- `v3_raw_reality_check.py`
-- `v3_hunter_monte_carlo.py`
 - `v3_experimental_15m_tag/models_15m.pkl`
-- `UniswapV3_AI_Hunter_GitHub双Agent简化通信协议_Rev1.md`
-- `LOCAL_HARNESS_INIT.md`
+- `results/r0_t001/legacy_claim_audit.json`
+- `results/r0_t001/legacy_claim_audit.md`
+- `work/handoff/ARCHITECT_REVIEW.md`
 - `work/control/WORKFLOW_STATE.yaml`
+- `UniswapV3_AI_Hunter_GitHub双Agent简化通信协议_Rev1.md`
 
-## 3. 术语
+## 4. 冻结策略参数
 
-报告中首次出现英文缩写时必须写全称和中文解释。例如：
+本任务禁止优化，默认按生产脚本冻结值：
 
-- **LP = Liquidity Provider / Liquidity Position，流动性提供者 / 流动性仓位**；
-- **ROI = Return on Investment，投资回报率**；
-- **LVR = Loss Versus Rebalancing，相对再平衡损失**；
-- **RSI = Relative Strength Index，相对强弱指数**；
-- **EMA = Exponential Moving Average，指数移动平均线**；
-- **NATR = Normalized Average True Range，归一化平均真实波幅**；
-- **ADX = Average Directional Index，平均趋向指数**；
-- **XGBoost = Extreme Gradient Boosting，极端梯度提升模型**；
-- **GA = Genetic Algorithm，遗传算法**；
-- **OOS = Out-of-Sample，样本外**。
-
-## 4. 本地数据要求
-
-允许读取 `.local/harness.yaml` 中配置的本地只读数据目录。
-
-本任务只要求：
-
-1. 验证旧脚本引用的数据路径是否能映射到本机已有数据；
-2. 记录相关数据覆盖范围、文件数和缺口；
-3. 如无需全量读取即可确定某项结论来源，不得为“凑全量回测”浪费计算资源；
-4. 若需要执行旧脚本才能确认某项来源，可以运行，但必须记录完整命令、运行范围和实际输出；
-5. 禁止修改原始数据。
-
-## 5. 必须审计的 README / 旧系统核心结论
-
-至少逐项建立证据链：
-
-1. `RANGE_PCT = ±8.13%` 的来源；
-2. `XGB_RISK_THRESHOLD = 0.57` 的来源；
-3. `4 天再平衡冷却期` 的来源；
-4. `最终净值 $29,270`；
-5. `总 ROI +40.3%`；
-6. `相对 Alpha +45.3%`；
-7. `Monte Carlo 胜率 91.7%`；
-8. 旧文档 / commit 中出现的 `+40.44%`、`+47.65%`、`+32.88%`、`+24.15%` 等关键数值；
-9. `原子级 / Raw Log 回测` 是否真正逐笔计算；
-10. `15 秒延迟`、`5 bps 滑点`、`Reality Penalty` 等现实约束是否真实进入计算。
+```text
+RANGE_PCT            = 0.0813      # ±8.13%
+REBALANCE_DELAY_DAYS = 4
+XGB_RISK_THRESHOLD   = 0.57
+MACRO_BULL_RSI       = 52
+MACRO_BEAR_RSI       = 50
+VOL_GUARD_NATR       = 2.0
+```
 
 其中：
 
-- **Alpha = Excess Return，超额收益**；
-- **Monte Carlo Simulation = 蒙特卡罗模拟**；
-- **Raw Log = 原始链上事件日志**；
-- **bps = basis points，基点，1 bps = 0.01%**。
+- **XGBoost = Extreme Gradient Boosting，极端梯度提升模型**；
+- **RSI = Relative Strength Index，相对强弱指数**；
+- **NATR = Normalized Average True Range，归一化平均真实波幅**。
 
-## 6. 模型可复现性检查
+如果旧代码存在多个互相冲突的冻结值，以 `lp_smart_agent.py` 当前 main 的生产参数为主，同时在报告中列出冲突，不得自行调和成“更优参数”。
 
-对 `models_15m.pkl` 只做本地受控检查，至少报告：
+## 5. 数据源
 
-1. pickle 内顶层键；
-2. XGBoost 模型类型；
-3. feature（特征）名称清单；
-4. GA 参数内容；
-5. 是否存在训练脚本；
-6. 是否能从仓库代码和本地数据完整重建该模型；
-7. 若不能，缺失什么：标签定义、训练窗口、随机种子、参数、数据版本等。
+优先使用本地只读数据：
 
-禁止为了“可复现”而猜测缺失训练流程。
+### 5.1 Uniswap V3 池数据
 
-## 7. 训练 / 验证泄漏检查
+Arbitrum WETH/USDC 0.05% 池：
 
-对每个优化 / 回测脚本明确标注：
+```text
+Pool = 0xC6962004f452bE9203591991D15f6b388e09E8D0
+```
 
-- 参数搜索区间；
-- 最终验证区间；
-- 两者是否重叠；
-- 是否使用未来数据；
-- 是否属于严格 OOS（Out-of-Sample，样本外）验证。
+至少使用本地 `minute.csv`；如当前回测引擎确有需要，可使用 `raw.csv` 做抽样交叉验证，但本任务不要求全量逐笔 Raw 重放。
 
-只允许以下结论标签：
+### 5.2 Binance 行情
 
-- `STRICT_OOS`：严格样本外；
-- `OVERLAP`：搜索 / 训练和验证存在重叠；
-- `IN_SAMPLE`：完全样本内；
-- `UNKNOWN`：代码 / 数据不足以判断。
+生产 `lp_smart_agent.py` 使用 Binance ETHUSDT 15 分钟和 4 小时行情作为信号输入。若本地 `BINANCE_KDATA` 可完整提供本任务窗口，应优先复现生产信号来源。
 
-## 8. 数值来源分类
+如果由于历史数据结构无法精确复现生产输入，可增加一个“Pool-derived signal”对照，但必须与“Production-like Binance signal”分栏报告，禁止混成一个结果。
 
-每个核心数值必须归入且只能归入以下一种：
+## 6. 必须比较的策略
 
-- `DIRECT_COMPUTE`：代码直接从数据计算；
-- `OPTIMIZER_OUTPUT`：优化器输出；
-- `HARD_CODED`：硬编码常数或固定结果；
-- `HEURISTIC_ADJUSTMENT`：经验系数 / 人工修正；
-- `MANUAL_SUMMARY`：README 人工汇总，代码中找不到完整证据；
-- `UNVERIFIED`：当前无法验证。
+所有策略从同一初始 USDC 等值资本开始，建议标准化为 `10,000 USDC`；如果回测框架需要其他金额，可使用不同数值，但各策略起始净值必须完全相同。
 
-## 9. Allowed Files
+### A. Frozen Legacy AI Hunter
 
-DeepSeek Harness 仅允许修改 / 新增：
+冻结旧模型和第 4 节参数，不调参。
 
-- `research/r0_t001_legacy_audit.py`
-- `tests/test_r0_t001_legacy_audit.py`
-- `results/r0_t001/legacy_claim_audit.json`
-- `results/r0_t001/legacy_claim_audit.md`
+状态逻辑按旧生产语义：
+
+```text
+ACTIVE → LP
+SAFE + Bull → 100% ETH
+SAFE + Bear → 100% USDC
+SAFE + neither → Keep Ratio
+```
+
+### B. Always LP
+
+始终做同样 `±8.13%` 宽度的 Uniswap V3 LP，不使用 AI 风险退出。
+
+再平衡规则必须固定、明确，建议使用旧项目 4 天冷却 + 出区间后才允许重建；禁止为使结果更好临时修改。
+
+### C. Always ETH
+
+全程持有 ETH。
+
+### D. Always USDC
+
+全程持有 USDC。
+
+### E. 50/50 ETH-USDC Buy-and-Hold
+
+初始按价值 50/50 分配后不再平衡，用于区分 LP 收益与简单混合持仓收益。
+
+其中：
+
+- **Buy-and-Hold = 买入并持有**。
+
+## 7. 成本处理
+
+必须至少输出两套结果：
+
+### 7.1 Gross Result（毛收益）
+
+不扣人为假设的 Gas / latency penalty，用于观察纯策略结构。
+
+- **Gas Fee = 链上执行手续费**。
+
+### 7.2 Legacy-Cost Result（旧成本假设）
+
+严格使用旧代码已经存在的成本假设，不得重新优化，例如：
+
+```text
+latency_bias = 0.0005  # 5 bps
+exit balance deduction = 0.0002（若对应旧逻辑确实使用）
+```
+
+其中：
+
+- **bps = basis points，基点；1 bps = 0.01%**；
+- `latency_bias` 只能称为“旧延迟/滑点假设”，禁止称为真实历史 Gas 或真实成交滑点。
+
+如 Demeter 或回测框架已经从池数据计算真实 LP 交易手续费收入，应保留该计算并在报告中说明。
+
+## 8. 禁止重新优化
+
+本任务禁止：
+
+- Optuna 搜索；
+- 网格搜索；
+- 遗传算法重新寻参；
+- 根据 2026-03-14 之后结果手工改变阈值；
+- 选择性删除亏损区间；
+- 根据结果挑选更好的开始日期；
+- 用 README 的旧收益数字校准结果。
+
+其中：
+
+- **Optuna = 自动超参数优化框架**；
+- **GA = Genetic Algorithm，遗传算法**。
+
+## 9. 时间与信号因果性
+
+所有信号在时间 `t` 的决策只能使用 `t` 或 `t` 之前已经完成的数据。
+
+特别检查：
+
+1. 15 分钟 bar 未收盘前不得使用该 bar 的最终 close/high/low；
+2. 4 小时 bar 同理；
+3. 使用 `merge_asof` 时必须 `direction='backward'`；
+4. 禁止使用 centered rolling window；
+5. 禁止使用未来填充；
+6. 所有 forward-looking 标签在本任务中都不应参与决策。
+
+## 10. 必须输出的指标
+
+每个策略至少输出：
+
+- 起始净值；
+- 结束净值；
+- Total Return，总收益率；
+- Annualized Return，年化收益率；
+- Maximum Drawdown，最大回撤；
+- Sharpe Ratio，夏普比率；
+- Sortino Ratio，索提诺比率；
+- 交易 / 状态切换次数；
+- LP 在池时间占比；
+- 出区间时间占比；
+- 累计 LP Fee，流动性手续费收入；
+- 累计模拟成本；
+- Frozen Legacy 相对 Always LP / Always ETH / Always USDC 的超额收益。
+
+其中：
+
+- **Sharpe Ratio = 夏普比率，每承担一单位波动获得的风险调整收益**；
+- **Sortino Ratio = 索提诺比率，只惩罚下行波动的风险调整收益指标**；
+- **Maximum Drawdown = 最大回撤，从历史高点到随后低点的最大跌幅**。
+
+## 11. 必须输出的事件统计
+
+Frozen Legacy 至少报告：
+
+- ACTIVE → SAFE 次数；
+- SAFE → ACTIVE 次数；
+- SAFE 时进入 ETH 次数；
+- SAFE 时进入 USDC 次数；
+- SAFE 时 Keep Ratio 次数；
+- 因 4 天冷却导致未重建次数；
+- 因出区间停止赚手续费的累计时间。
+
+这些统计用于检查策略是否真的发生状态切换，避免“回测跑了但实际一直在一个状态”。
+
+## 12. 最小交叉验证
+
+从 OOS 窗口随机或固定选择至少 3 个不同市场阶段，每段至少 24 小时，检查：
+
+1. 策略状态序列；
+2. 价格序列；
+3. LP 是否在区间；
+4. 手续费是否只在有效区间累计；
+5. 资产净值变化是否与状态一致。
+
+这不是参数优化，仅用于数值 sanity check（合理性检查）。
+
+## 13. Allowed Files
+
+DeepSeek Harness 仅允许新增 / 修改：
+
+- `research/r0_t002_post_freeze_oos.py`
+- `tests/test_r0_t002_post_freeze_oos.py`
+- `results/r0_t002/post_freeze_oos.json`
+- `results/r0_t002/post_freeze_oos.md`
+- `results/r0_t002/post_freeze_oos_equity.csv`（仅允许小型汇总曲线，不上传原始数据）
 - `work/handoff/HARNESS_REPORT.md`
 - `work/control/WORKFLOW_STATE.yaml`
 
+如确需新增一个很小的通用辅助模块，必须先报告 `BLOCKED` 或 `USER_ACTION_REQUIRED`，不得自行扩大 Allowed Files。
+
 禁止修改：
 
-- `README.md`
-- 所有旧策略 / 回测脚本；
-- `models_15m.pkl`；
+- 所有 legacy 策略文件；
+- README；
+- 模型文件；
 - 协议文件；
-- `LOCAL_HARNESS_INIT.md`；
 - 本地原始数据。
 
-## 10. 必须实现的审计工具
+## 14. 测试要求
 
-`research/r0_t001_legacy_audit.py` 至少要能：
+至少覆盖：
 
-1. 扫描上述旧脚本和 README 的关键数值；
-2. 输出 Claim Matrix（结论证据矩阵）；
-3. 标记数值来源分类；
-4. 标记训练 / 验证重叠风险；
-5. 输出 JSON 和 Markdown 两种结果；
-6. 对模型元数据做受控读取；
-7. 不依赖链上写权限。
+1. OOS 起始日期固定为 2026-03-14，不可被配置漂移；
+2. 冻结参数与 `lp_smart_agent.py` 一致；
+3. 不存在任何优化器调用；
+4. 信号只能 backward merge；
+5. 各基准策略初始净值完全一致；
+6. LP 出区间时不继续累计手续费；
+7. 成本模型 Gross / Legacy-Cost 分离；
+8. 缺少 Binance 或 Uniswap 数据时明确失败 / 降级，禁止用模拟数据冒充真实 OOS；
+9. 输出 schema 稳定；
+10. 无链上写路径。
 
-## 11. 必跑命令
+## 15. 本地运行与依赖
 
-至少运行：
+允许 Harness 在本地研究环境安装本任务必要 Python 包，例如 Demeter，但：
+
+- 不得修改全局系统环境以外的项目文件；
+- 不得提交虚拟环境；
+- 必须在报告记录 Python、Demeter、pandas、numpy、xgboost 等实际版本；
+- 如依赖安装失败且无法完成可信回测，报告 `BLOCKED`，不得用手写收益数字替代。
+
+## 16. 必跑命令
+
+至少：
 
 ```bash
-python research/r0_t001_legacy_audit.py
-pytest -q tests/test_r0_t001_legacy_audit.py
+python research/r0_t002_post_freeze_oos.py
+python -m pytest -q -p no:cacheprovider tests/test_r0_t002_post_freeze_oos.py
 ```
 
-如果 Windows 环境中的 Python 命令不同，可替换，但报告必须记录实际命令。
+若 Windows 命令不同，可替换，但必须记录实际命令。
 
-## 12. 测试要求
+## 17. 结果裁决原则
 
-测试至少覆盖：
+本任务不是为了证明旧策略一定有效。
 
-1. HARD_CODED 数值能被识别；
-2. HEURISTIC_ADJUSTMENT 能被识别；
-3. 训练 / 验证区间重叠能被标记为 `OVERLAP`；
-4. README 中存在但代码无法建立证据的结论不能自动判为可信；
-5. 输出 JSON schema 稳定；
-6. 缺少本地模型 / 数据时脚本应明确降级为 `UNVERIFIED`，不能伪造 PASS。
+### 结果 A：Frozen Legacy 明显优于简单基准
 
-## 13. 必须输出的结果
+保留旧三态架构作为后续研究 Benchmark（基准策略），进入更严格 Raw / 逐笔验证。
 
-`legacy_claim_audit.md` 至少包含表格：
+### 结果 B：优势很小或不稳定
 
-| Claim / 结论 | README 数值 | 代码来源 | 数据来源 | 分类 | OOS 状态 | 当前可信度 | 是否建议重跑 |
-|---|---:|---|---|---|---|---|---|
+旧系统只作为历史参考；下一阶段转向新的 Fee Yield + Volatility + Trend 经济驱动框架。
 
-并给出三张清单：
+其中：
 
-### A. 可直接继承
-有充分代码与数据证据，可作为后续研究基准。
+- **Fee Yield = 手续费收益率**；
+- **Volatility = 波动率**；
+- **Trend = 趋势**。
 
-### B. 需要严格重跑
-思想 / 代码有价值，但当前结果受重叠、近似或不完整验证影响。
+### 结果 C：明显落后
 
-### C. 应废弃旧数字
-硬编码、经验修正冒充真实结果、无法找到证据链或不可复现。
+停止继续投入旧 AI Hunter 模型重构，直接进入新的 LP / ETH / USDC 状态研究框架。
 
-## 14. Harness Report 必须额外回答
+## 18. Harness Report 必须回答
 
-除协议标准结构外，明确回答：
+1. Frozen Legacy 在严格 post-freeze OOS 上最终收益是多少？
+2. 它是否战胜 Always LP？差多少？
+3. 它是否战胜 Always ETH / USDC？
+4. Gross 和 Legacy-Cost 两套结果差多少？
+5. 最大回撤是否改善？
+6. 三态切换是否真实发生，还是大部分时间卡在某一状态？
+7. `±8.13%` 是否在 post-freeze OOS 中仍具有合理性？
+8. 下一步应该继续深挖旧模型，还是转向新的经济变量框架？
 
-1. 旧项目 README 的 +40.3% 是否可信；
-2. 91.7% Monte Carlo 胜率是否可由当前代码复现；
-3. Raw / 原子级结果是否真正由逐笔 Swap 计算；
-4. `models_15m.pkl` 是否可重训；
-5. 下一任务最值得花计算资源重跑哪一项。
-
-## 15. 验收标准
-
-任务 PASS 需要同时满足：
-
-- Claim Matrix 覆盖第 5 节全部核心结论；
-- 每个核心结论都有明确来源分类；
-- OOS 状态分类完整；
-- 模型可复现性有证据；
-- 自动化审计工具与测试通过；
-- 没有修改旧策略代码或原始数据；
-- 没有把近似 / 抽样 / 硬编码结果描述成真实全量回测；
-- `HARNESS_REPORT.md` 提供完整命令和本地数据证据。
-
-## 16. 禁止项
-
-- 禁止链上写操作；
-- 禁止交易、Swap、增加 / 移除真实流动性；
-- 禁止修改钱包 / 私钥 / RPC 凭据；
-- 禁止上传原始历史数据；
-- 禁止 force push、rebase、stash、reset；
-- 禁止自行进入下一任务；
-- 禁止修改本任务 Allowed Files 之外的文件。
-
-## 17. 交接
+## 19. 交接规则
 
 完成后：
 
 1. 更新 `work/handoff/HARNESS_REPORT.md`；
-2. 将 `WORKFLOW_STATE.yaml` 更新为：
-   - `handoff_seq: 2`
-   - 新唯一 `handoff_id`
-   - `state: REVIEW_READY`
-   - `owner: architect`
-   - `authorized_next: []`
-3. 普通 commit + 普通 push 到 `main`；
-4. 停止，等待 Architect Review。
-
-从本任务开始，不再允许初始化阶段那种无正式 handoff 的 ad-hoc commit。
+2. 将 `WORKFLOW_STATE.yaml` 更新为新的 `REVIEW_READY`；
+3. `handoff_seq + 1`；
+4. 新唯一 `handoff_id`；
+5. `owner=architect`；
+6. `authorized_next=[]`；
+7. 普通 commit + 普通 push；
+8. 停止，等待 Architect Review。

@@ -1,128 +1,68 @@
-# Architect Review — R0-T001 Iteration 2
+# Architect Review — R0-T001 Iteration 3
 
 ## Decision
 
-`CHANGES_REQUIRED`
+`PASS`
 
-Iteration 2 已正确修复上一轮 F1 / F2，并基本修正 F3，但仍有 1 个一致性缺口，因此本轮不能 PASS。
+R0-T001（旧系统结论来源与可复现性审计）通过。
 
 ## Reviewed Snapshot
 
-- remote_head: `f60d663de82dfc0a88adc0f6514d31fe233a6bc2`
+- remote_head: `f3660e9ece9b97296dbab6fc493ecdbee3187bbd`
 - task_id: `R0-T001`
-- iteration reviewed: `2`
-- consumed harness handoff: `R0-T001-HARNESS-20260823-002`
+- iteration reviewed: `3`
+- consumed harness handoff: `R0-T001-HARNESS-20260823-003`
 
-## Accepted Fixes
+## Independent Review Findings
 
-### F1 — `.gitignore` 越界修改
+1. Iteration 3 实际 diff 仅修正 Claim `R0-T001-C7` 的样本外状态及其派生结果、测试和交接文件，未修改旧策略代码、模型或原始数据。
+2. `R0-T001-C7` 的 `oos_status` 已从 `OVERLAP` 改为 `UNKNOWN`，与 `v3_hunter_monte_carlo.py` 的脚本级判断一致。
+3. 新增一致性测试明确断言 Claim C7 与 Leakage Matrix 均为 `UNKNOWN`。
+4. Harness 报告记录 `15 passed in 0.13s`；本次 diff 与该测试新增数量一致。
+5. Iteration 1/2 中已确认的范围违规、模型缺失降级测试和过度样本外判定均已修正。
 
-已正确撤销上一轮新增的：
+其中：
 
-```text
-.pytest_cache/
-pytest-cache-files-*/
-```
+- **OOS = Out-of-Sample，样本外验证**。
+- `UNKNOWN` 表示当前证据不足以证明严格样本外，也不足以证明一定发生训练/验证重叠。
 
-本轮 diff 仅删除这两行，符合 Architect 的窄范围授权。
+## R0-T001 Final Audit Conclusions
 
-### F2 — 模型缺失降级测试
+以下旧数字不得继续作为已验证绩效使用：
 
-已正确增加 `model_path` 注入，并真实构造不存在的模型路径；测试明确断言：
+- `$29,270` 最终净值；
+- `+40.3%` 总 ROI；
+- `+45.3%` 相对 Alpha；
+- `91.7%` Monte Carlo 胜率；
+- `+40.44%`、`+47.65%`、`+32.88%`、`+24.15%`；
+- “原子级 / Raw Log 已真实逐笔验证”的表述。
 
-```text
-exists is False
-status == "UNVERIFIED"
-```
+其中：
 
-未移动或重命名真实 `models_15m.pkl`。该项修复满足要求。
+- **ROI = Return on Investment，投资回报率**；
+- **Alpha = Excess Return，超额收益**；
+- **Monte Carlo Simulation = 蒙特卡罗模拟**；
+- **Raw Log = 原始链上事件日志**。
 
-### F3 — Monte Carlo 脚本级 OOS 判定
+可以作为“待验证候选”保留的旧资产包括：
 
-`v3_hunter_monte_carlo.py` 的 leakage matrix 已从 `OVERLAP` 修正为 `UNKNOWN`，并明确说明：
+- `RANGE_PCT = ±8.13%`；
+- `XGB_RISK_THRESHOLD = 0.57`；
+- 4 天再平衡冷却期；
+- 19 个旧模型特征；
+- LP / ETH / USDC 三态切换架构。
 
-- 技术指标管线未发现明确 look-ahead；
-- `merge_asof(direction='backward')` 本身没有证明未来数据使用；
-- 由于 `models_15m.pkl` 的训练窗口 / 标签 / 切分未知，无法证明随机测试窗口属于严格样本外。
+但这些都不等于已经通过未来数据验证。
 
-该判断正确。
+## Why R0-T002
 
-## Remaining Finding
+旧项目在 2026-03-13 已形成并提交其所谓“最终版本”，而本地数据已经延伸到 2026-08-21。因而 2026-03-14 之后的数据是在旧代码、旧参数和旧模型冻结之后才发生的，可以构造比旧回测更强的时间外验证。
 
-### F4 — Claim Matrix 与 Leakage Matrix 的 OOS 状态仍不一致（必须修）
-
-生成产物 `results/r0_t001/legacy_claim_audit.json` 中：
-
-```text
-claim_id = R0-T001-C7
-claim = Monte Carlo 胜率 91.7% 来源
-oos_status = OVERLAP
-```
-
-但同一产物的 leakage matrix 已把 `v3_hunter_monte_carlo.py` 标为：
-
-```text
-strict_oos = UNKNOWN
-future_data = UNKNOWN
-```
-
-Harness Report 的 Claim Matrix 也仍显示 `91.7% | ... | OVERLAP`，与本轮 F3 的修正结论冲突。
-
-这不是新的研究判断问题，而是同一结论在不同输出层之间没有同步。
-
-## Iteration 3 Narrow Fix Scope
-
-只允许修改：
-
-- `research/r0_t001_legacy_audit.py`
-- `tests/test_r0_t001_legacy_audit.py`
-- `results/r0_t001/legacy_claim_audit.json`
-- `results/r0_t001/legacy_claim_audit.md`
-- `work/handoff/HARNESS_REPORT.md`
-- `work/control/WORKFLOW_STATE.yaml`
-
-禁止修改 `.gitignore` 和其他任何文件。
-
-## Required Fix
-
-1. 将 Claim `R0-T001-C7` 的 `oos_status` 改为 `UNKNOWN`；
-2. 生成的 Markdown Claim Matrix 和 Harness Report 中相应行也必须为 `UNKNOWN`；
-3. 保留“91.7% 无法由当前 `range(10)` 代码直接产生”的可信度判断，不因 OOS 状态修正而改变；
-4. 新增或加强测试，至少明确断言：
-
-```text
-claims["R0-T001-C7"]["oos_status"] == UNKNOWN
-leaks["v3_hunter_monte_carlo.py"]["strict_oos"] == UNKNOWN
-```
-
-5. 重新生成 JSON / Markdown 产物并运行完整 R0-T001 测试。
-
-## Required Validation
-
-至少重新运行：
-
-```bash
-python research/r0_t001_legacy_audit.py
-python -m pytest -q -p no:cacheprovider tests/test_r0_t001_legacy_audit.py
-```
-
-Harness Report 必须记录：
-
-- Claim C7 与 Leakage Matrix 的 OOS 状态均为 `UNKNOWN`；
-- 测试总数、PASS 数；
-- 实际运行命令。
-
-## Accepted Core Conclusions
-
-以下结论保持不变：
-
-1. README 的 `$29,270 / +40.3% / +45.3%` 当前缺少完整可复现证据链；
-2. `91.7%` 不能由当前 10 次随机测试代码直接产生；
-3. `v3_raw_reality_check.py` 的最终收益使用 `32.88 * 0.85` 经验修正，不能称为真实逐笔 Raw Log（原始日志）回测收益；
-4. `wide_range_study.py` 属于 `IN_SAMPLE`（样本内）；
-5. `dual_engine_optimizer.py` 属于 `OVERLAP`（训练/搜索与验证区间重叠）；
-6. `models_15m.pkl` 当前无法从仓库独立重训。
+下一任务固定旧参数，不重新优化，直接检验冻结系统在 2026-03-14 至 2026-08-21 后冻结数据上的表现，并与 Always LP / ETH / USDC 等简单基准比较。
 
 ## Next State
 
-保持 `task_id = R0-T001`，进入 iteration 3。完成上述单一一致性修正后发布新的 `REVIEW_READY`；不得自行开始下一任务。
+- R0-T001: `PASS`
+- next task: `R0-T002`
+- next owner: `harness`
+- next state: `HARNESS_READY`
