@@ -8,8 +8,6 @@ __pycache__/
 *.log
 .DS_Store
 .ipynb_checkpoints/
-.pytest_cache/
-pytest-cache-files-*/
 
 # 忽略状态文件（保护你的实时运行数据）
 agent_state.json

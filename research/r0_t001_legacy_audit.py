@@ -75,15 +75,20 @@ def _grep_all_files(files, pattern):
     return out
 
 
-def _analyze_model_metadata():
+def _analyze_model_metadata(model_path=None):
     """
     受控读取 models_15m.pkl 元数据。
     优先用 pickle.load（需 xgboost）；缺失则降级用 pickletools 静态解析；
     都不可用时标记 UNVERIFIED。绝不执行链上写 / 交易。
+
+    参数 model_path：可选，模型文件绝对/相对路径。供测试注入不存在的路径。
     """
-    pkl_rel = "v3_experimental_15m_tag/models_15m.pkl"
-    pkl_path = os.path.join(REPO_ROOT, pkl_rel)
-    result = {"path": pkl_rel, "exists": os.path.isfile(pkl_path)}
+    if model_path is None:
+        pkl_rel = "v3_experimental_15m_tag/models_15m.pkl"
+        pkl_path = os.path.join(REPO_ROOT, pkl_rel)
+    else:
+        pkl_path = model_path
+    result = {"path": pkl_path, "exists": os.path.isfile(pkl_path)}
 
     if not result["exists"]:
         result["status"] = "UNVERIFIED"
@@ -480,9 +485,9 @@ def build_leakage_matrix():
         "script": "v3_hunter_monte_carlo.py",
         "search_range": "无参数搜索（固定 0.55 / EMA / RSI 阈值）",
         "validation_window": "10 次随机 25-35 天窗口",
-        "overlap": "信号基于全量数据预计算，评估窗口内使用全量信号 → 存在信号泄漏风险",
-        "future_data": "潜在（信号用全量数据，包含评估窗口）",
-        "strict_oos": OVERLAP,
+        "overlap": "技术指标由历史价格滚动/重采样计算，脚本用 merge_asof(direction='backward') 并入既有信号，未发现明确 look-ahead；但 models_15m.pkl 训练来源（训练脚本/标签/窗口/切分）缺失，无法判定随机测试窗口是否属于严格样本外",
+        "future_data": "UNKNOWN（技术指标管线未发现明确 look-ahead，但模型训练窗口未知）",
+        "strict_oos": UNKNOWN,
     })
     leaks.append({
         "script": "v3_raw_reality_check.py",

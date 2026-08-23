@@ -1,6 +1,6 @@
 # R0-T001 Legacy Claim Audit（旧系统结论证据审计）
 
-- 生成时间：2026-08-23T04:40:28.017483
+- 生成时间：2026-08-23T08:43:06.924919
 - 消费 remote_head：04ac458c4154ceb5780980a1b2c2eb45c0f6b54b
 
 ## Claim Matrix（结论证据矩阵）
@@ -28,7 +28,7 @@
 | wide_range_study.py | range∈[0.08,0.12], risk_thresh∈[0.40,0.70], m_bull∈[50,65], m_bear∈[35,50] | 同一 full_minute_df 全量数据 + 2025-08-24 起 Peak Start Stress Test | 是（搜索与验证用同一份全量数据） | 否（未显式用未来，但无时间分割） | IN_SAMPLE |
 | dual_engine_optimizer.py | range∈[0.02,0.05], risk_thresh∈[0.40,0.65] | search_df=full_minute_df.iloc[-260000:]（最近 ~6 个月），final=full_minute_df 全量 | 是（最终验证包含搜索用的最后 6 个月） | 否 | OVERLAP |
 | demeter_asymmetric_backtest.py | 无搜索（固定 ±4% 区间 + 固定阈值 0.45） | 全量 365 天 | 不适用（无参数搜索，但无独立验证集） | 否 | IN_SAMPLE |
-| v3_hunter_monte_carlo.py | 无参数搜索（固定 0.55 / EMA / RSI 阈值） | 10 次随机 25-35 天窗口 | 信号基于全量数据预计算，评估窗口内使用全量信号 → 存在信号泄漏风险 | 潜在（信号用全量数据，包含评估窗口） | OVERLAP |
+| v3_hunter_monte_carlo.py | 无参数搜索（固定 0.55 / EMA / RSI 阈值） | 10 次随机 25-35 天窗口 | 技术指标由历史价格滚动/重采样计算，脚本用 merge_asof(direction='backward') 并入既有信号，未发现明确 look-ahead；但 models_15m.pkl 训练来源（训练脚本/标签/窗口/切分）缺失，无法判定随机测试窗口是否属于严格样本外 | UNKNOWN（技术指标管线未发现明确 look-ahead，但模型训练窗口未知） | UNKNOWN |
 | v3_raw_reality_check.py | 无 | 声称全量 raw，实际硬编码结果 | 不适用（结果非计算产生） | 否 | IN_SAMPLE |
 
 ## 数据路径映射

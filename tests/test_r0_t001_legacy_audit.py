@@ -49,9 +49,10 @@ class TestOOS:
         leaks = {l["script"]: l for l in audit.build_leakage_matrix()}
         assert leaks["dual_engine_optimizer.py"]["strict_oos"] == audit.OVERLAP
 
-    def test_monte_carlo_overlap(self):
+    def test_monte_carlo_unknown_oos(self):
+        # F3: 技术指标管线未发现明确 look-ahead，但模型训练窗口未知 → UNKNOWN
         leaks = {l["script"]: l for l in audit.build_leakage_matrix()}
-        assert leaks["v3_hunter_monte_carlo.py"]["strict_oos"] == audit.OVERLAP
+        assert leaks["v3_hunter_monte_carlo.py"]["strict_oos"] == audit.UNKNOWN
 
 
 class TestCredibility:
@@ -97,10 +98,21 @@ class TestDegradation:
     """缺少模型 / 数据时降级为 UNVERIFIED，不伪造 PASS。"""
 
     def test_missing_model_degrades_to_unverified(self):
-        # 构造一个不存在的模型路径
-        meta = audit._analyze_model_metadata()
-        # 正常仓库里模型存在，应至少返回 exists=True
-        assert "exists" in meta
+        # 真实构造模型文件缺失场景：注入一个保证不存在的路径
+        missing_path = os.path.join(
+            tempfile.gettempdir(),
+            "r0_t001_definitely_missing_model.pkl",
+        )
+        # 确保路径不存在
+        if os.path.exists(missing_path):
+            os.remove(missing_path)
+        assert not os.path.exists(missing_path)
+
+        meta = audit._analyze_model_metadata(model_path=missing_path)
+        # 明确断言：exists is False 且 status == "UNVERIFIED"
+        assert meta["exists"] is False
+        assert meta["status"] == "UNVERIFIED"
+        assert "reason" in meta  # 缺失原因必须给出
 
     def test_audit_tool_never_fabricates_pass_without_deps(self):
         # 即使依赖缺失，审计工具也必须返回确定性的分类结果，而非异常
