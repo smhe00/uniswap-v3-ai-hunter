@@ -1,0 +1,325 @@
+{
+  "task_id": "R0-T003",
+  "status": "COMPLETE",
+  "oos_window": {
+    "start": "2026-03-14T00:00:00+00:00",
+    "end": "2026-08-21T23:59:59+00:00"
+  },
+  "method": {
+    "segmentation": "fixed 14-day window, per-segment return direction (+/-5%), merged same-regime",
+    "note": "ex-post attribution; 固定窗口切分连续完整覆盖，按段首尾收益方向标 regime，事后归因不用于策略决策"
+  },
+  "regime_stats": {
+    "bull": {
+      "days": 35,
+      "segments": [
+        {
+          "start": "2026-03-28 00:00:00+00:00",
+          "end": "2026-04-10 00:00:00+00:00",
+          "regime": "bull",
+          "days": 14,
+          "eth_ret": 0.12625059179484022
+        },
+        {
+          "start": "2026-06-06 00:00:00+00:00",
+          "end": "2026-06-19 00:00:00+00:00",
+          "regime": "bull",
+          "days": 14,
+          "eth_ret": 0.09001961368687672
+        },
+        {
+          "start": "2026-08-15 00:00:00+00:00",
+          "end": "2026-08-21 00:00:00+00:00",
+          "regime": "bull",
+          "days": 7,
+          "eth_ret": 0.3369427546934447
+        }
+      ],
+      "eth_ret": 0.6412780328166765,
+      "strategies": {
+        "A_frozen_legacy_gross_binance": {
+          "ret": 0.330068,
+          "mdd": -0.070668,
+          "segments": 3,
+          "segment_rets": [
+            -0.0031,
+            0.011803,
+            0.318639
+          ],
+          "excess_vs_eth": -0.31121,
+          "excess_vs_usdc": 0.330068
+        },
+        "A_frozen_legacy_legacy_cost_binance": {
+          "ret": 0.330117,
+          "mdd": -0.070859,
+          "segments": 3,
+          "segment_rets": [
+            -0.003138,
+            0.011729,
+            0.318835
+          ],
+          "excess_vs_eth": -0.311161,
+          "excess_vs_usdc": 0.330117
+        },
+        "B_always_lp_gross_binance": {
+          "ret": 0.207362,
+          "mdd": -0.012511,
+          "segments": 3,
+          "segment_rets": [
+            0.079174,
+            0.066949,
+            0.048582
+          ],
+          "excess_vs_eth": -0.433916,
+          "excess_vs_usdc": 0.207362
+        },
+        "A_frozen_legacy_gross_pool_control": {
+          "ret": 0.332185,
+          "mdd": -0.071676,
+          "segments": 3,
+          "segment_rets": [
+            -0.00418,
+            0.011803,
+            0.322171
+          ],
+          "excess_vs_eth": -0.309093,
+          "excess_vs_usdc": 0.332185
+        },
+        "C_always_eth": {
+          "ret": 0.641278,
+          "mdd": -0.047531,
+          "segments": 3,
+          "segment_rets": [
+            0.126251,
+            0.09002,
+            0.336943
+          ],
+          "excess_vs_eth": 0.0,
+          "excess_vs_usdc": 0.641278
+        },
+        "D_always_usdc": {
+          "ret": 0.0,
+          "mdd": 0.0,
+          "segments": 3,
+          "segment_rets": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "excess_vs_eth": -0.641278,
+          "excess_vs_usdc": 0.0
+        },
+        "E_buy_hold_5050": {
+          "ret": 0.278555,
+          "mdd": -0.021959,
+          "segments": 3,
+          "segment_rets": [
+            0.061623,
+            0.038595,
+            0.159585
+          ],
+          "excess_vs_eth": -0.362723,
+          "excess_vs_usdc": 0.278555
+        }
+      }
+    },
+    "bear": {
+      "days": 42,
+      "segments": [
+        {
+          "start": "2026-03-14 00:00:00+00:00",
+          "end": "2026-03-27 00:00:00+00:00",
+          "regime": "bear",
+          "days": 14,
+          "eth_ret": -0.05019390445328542
+        },
+        {
+          "start": "2026-05-09 00:00:00+00:00",
+          "end": "2026-06-05 00:00:00+00:00",
+          "regime": "bear",
+          "days": 28,
+          "eth_ret": -0.3195362658677573
+        }
+      ],
+      "eth_ret": -0.35369139752271694,
+      "strategies": {
+        "A_frozen_legacy_gross_binance": {
+          "ret": -0.066823,
+          "mdd": -0.117277,
+          "segments": 2,
+          "segment_rets": [
+            -0.004693,
+            -0.062423
+          ],
+          "excess_vs_eth": 0.286868,
+          "excess_vs_usdc": -0.066823
+        },
+        "A_frozen_legacy_legacy_cost_binance": {
+          "ret": -0.068789,
+          "mdd": -0.117136,
+          "segments": 2,
+          "segment_rets": [
+            -0.005235,
+            -0.063889
+          ],
+          "excess_vs_eth": 0.284902,
+          "excess_vs_usdc": -0.068789
+        },
+        "B_always_lp_gross_binance": {
+          "ret": -0.29662,
+          "mdd": -0.234569,
+          "segments": 2,
+          "segment_rets": [
+            -0.088567,
+            -0.228271
+          ],
+          "excess_vs_eth": 0.057071,
+          "excess_vs_usdc": -0.29662
+        },
+        "A_frozen_legacy_gross_pool_control": {
+          "ret": -0.067223,
+          "mdd": -0.117277,
+          "segments": 2,
+          "segment_rets": [
+            -0.004238,
+            -0.063253
+          ],
+          "excess_vs_eth": 0.286468,
+          "excess_vs_usdc": -0.067223
+        },
+        "C_always_eth": {
+          "ret": -0.353691,
+          "mdd": -0.332008,
+          "segments": 2,
+          "segment_rets": [
+            -0.050194,
+            -0.319536
+          ],
+          "excess_vs_eth": 0.0,
+          "excess_vs_usdc": -0.353691
+        },
+        "D_always_usdc": {
+          "ret": 0.0,
+          "mdd": 0.0,
+          "segments": 2,
+          "segment_rets": [
+            0.0,
+            0.0
+          ],
+          "excess_vs_eth": 0.353691,
+          "excess_vs_usdc": 0.0
+        },
+        "E_buy_hold_5050": {
+          "ret": -0.189219,
+          "mdd": -0.176415,
+          "segments": 2,
+          "segment_rets": [
+            -0.025135,
+            -0.168315
+          ],
+          "excess_vs_eth": 0.164472,
+          "excess_vs_usdc": -0.189219
+        }
+      }
+    },
+    "range": {
+      "days": 84,
+      "segments": [
+        {
+          "start": "2026-04-11 00:00:00+00:00",
+          "end": "2026-05-08 00:00:00+00:00",
+          "regime": "range",
+          "days": 28,
+          "eth_ret": 0.008939273808577175
+        },
+        {
+          "start": "2026-06-20 00:00:00+00:00",
+          "end": "2026-08-14 00:00:00+00:00",
+          "regime": "range",
+          "days": 56,
+          "eth_ret": 0.08079417190451954
+        }
+      ],
+      "eth_ret": 0.09045568693788852,
+      "strategies": {
+        "A_frozen_legacy_gross_binance": {
+          "ret": -0.090683,
+          "mdd": -0.090338,
+          "segments": 2,
+          "segment_rets": [
+            -0.079536,
+            -0.01211
+          ],
+          "excess_vs_eth": -0.181139,
+          "excess_vs_usdc": -0.090683
+        },
+        "A_frozen_legacy_legacy_cost_binance": {
+          "ret": -0.092597,
+          "mdd": -0.091024,
+          "segments": 2,
+          "segment_rets": [
+            -0.080413,
+            -0.01325
+          ],
+          "excess_vs_eth": -0.183053,
+          "excess_vs_usdc": -0.092597
+        },
+        "B_always_lp_gross_binance": {
+          "ret": 0.08086,
+          "mdd": -0.070303,
+          "segments": 2,
+          "segment_rets": [
+            0.032636,
+            0.0467
+          ],
+          "excess_vs_eth": -0.009596,
+          "excess_vs_usdc": 0.08086
+        },
+        "A_frozen_legacy_gross_pool_control": {
+          "ret": -0.095347,
+          "mdd": -0.089792,
+          "segments": 2,
+          "segment_rets": [
+            -0.079605,
+            -0.017104
+          ],
+          "excess_vs_eth": -0.185803,
+          "excess_vs_usdc": -0.095347
+        },
+        "C_always_eth": {
+          "ret": 0.090456,
+          "mdd": -0.100031,
+          "segments": 2,
+          "segment_rets": [
+            0.008939,
+            0.080794
+          ],
+          "excess_vs_eth": 0.0,
+          "excess_vs_usdc": 0.090456
+        },
+        "D_always_usdc": {
+          "ret": 0.0,
+          "mdd": 0.0,
+          "segments": 2,
+          "segment_rets": [
+            0.0,
+            0.0
+          ],
+          "excess_vs_eth": -0.090456,
+          "excess_vs_usdc": 0.0
+        },
+        "E_buy_hold_5050": {
+          "ret": 0.041536,
+          "mdd": -0.045432,
+          "segments": 2,
+          "segment_rets": [
+            0.004669,
+            0.036695
+          ],
+          "excess_vs_eth": -0.04892,
+          "excess_vs_usdc": 0.041536
+        }
+      }
+    }
+  }
+}
